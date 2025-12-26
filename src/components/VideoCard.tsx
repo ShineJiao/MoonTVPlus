@@ -389,7 +389,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
         showHeart: true, // 移动端菜单中需要显示收藏选项
         showCheckCircle: false,
         showDoubanLink: true, // 移动端菜单中显示豆瓣链接
-        showRating: false,
+        showRating: !!rate,
         showYear: true,
       },
       douban: {

@@ -315,6 +315,7 @@ function HomeClient() {
                             poster={movie.poster}
                             title={movie.title}
                             year={movie.year}
+                            rate={movie.rate}
                             type='movie'
                             from='douban'
                           />
@@ -471,6 +472,7 @@ function HomeClient() {
                             poster={tvShow.poster}
                             title={tvShow.title}
                             year={tvShow.year}
+                            rate={tvShow.rate}
                             type='tv'
                             from='douban'
                           />
@@ -514,6 +516,7 @@ function HomeClient() {
                             poster={varietyShow.poster}
                             title={varietyShow.title}
                             year={varietyShow.year}
+                            rate={varietyShow.rate}
                             type='tv'
                             from='douban'
                           />

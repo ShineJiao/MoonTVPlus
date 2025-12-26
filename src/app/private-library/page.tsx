@@ -111,6 +111,11 @@ export default function PrivateLibraryPage() {
                   title={video.title}
                   poster={video.poster}
                   year={video.releaseDate.split('-')[0]}
+                  rate={
+                    video.voteAverage && video.voteAverage > 0
+                      ? video.voteAverage.toFixed(1)
+                      : ''
+                  }
                   from='search'
                 />
               ))}
