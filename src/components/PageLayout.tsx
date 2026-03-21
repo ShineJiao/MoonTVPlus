@@ -30,14 +30,7 @@ const PageLayout = ({ children, activePath = '/', hideNavigation = false }: Page
               </div>
             )}
 
-            {/* 桌面端顶部按钮 */}
-            {!hideNavigation && (
-              <div className='absolute top-2 left-4 z-20 hidden md:flex items-center gap-2'>
-                <ThemeToggle />
-                <UserMenu />
-                <UpdateNotification />
-              </div>
-            )}
+            {/* 桌面端顶部按钮 - 已移动到侧边栏底部，此处不再显示 */}
 
             {/* 主内容 */}
             <main
