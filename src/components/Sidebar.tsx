@@ -2,7 +2,7 @@
 
 'use client';
 
-import { Cat, Clover, Film, FolderOpen, Globe, Home, Menu, Search, Settings, Star, Tv, Users } from 'lucide-react';
+import { Cat, Clover, Film, FolderOpen, Globe, Home, Menu, Search, Star, Tv, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
@@ -358,12 +358,12 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
               </div>
             </div>
 
-            {/* 底部功能按钮 - 仅在展开时显示 */}
+            {/* Logo 区域 - 移动到菜单栏底部 */}
             {!isCollapsed && (
-              <div className='p-4 border-t border-gray-200/30 dark:border-gray-700/30 space-y-2'>
-                <ThemeToggle />
-                <UserMenu />
-                <UpdateNotification />
+              <div className='relative h-16 p-4 border-t border-gray-200/30 dark:border-gray-700/30'>
+                <div className='flex items-center justify-center h-full'>
+                  <Logo />
+                </div>
               </div>
             )}
           </div>
