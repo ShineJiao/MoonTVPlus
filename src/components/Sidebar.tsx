@@ -2,7 +2,7 @@
 
 'use client';
 
-import { Cat, Clover, Film, FolderOpen, Globe, Home, Menu, Search, Star, Tv, Users } from 'lucide-react';
+import { Cat, Clover, Film, FolderOpen, Globe, Home, Menu, Search, Settings, Star, Tv, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
@@ -16,6 +16,9 @@ import {
 
 import { useSite } from './SiteProvider';
 import { useWatchRoomContextSafe } from './WatchRoomProvider';
+import { ThemeToggle } from './ThemeToggle';
+import { UpdateNotification } from './UpdateNotification';
+import { UserMenu } from './UserMenu';
 
 interface SidebarContextType {
   isCollapsed: boolean;
@@ -231,7 +234,7 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
       <div className='hidden md:flex'>
         <aside
           data-sidebar
-          className={`fixed top-0 left-0 h-screen bg-white/40 backdrop-blur-xl transition-all duration-300 border-r border-gray-200/50 z-10 shadow-lg dark:bg-gray-900/70 dark:border-gray-700/50 ${isCollapsed ? 'w-16' : 'w-64'
+          className={`fixed top-0 right-0 h-screen bg-white/40 backdrop-blur-xl transition-all duration-300 border-l border-gray-200/50 z-10 shadow-lg dark:bg-gray-900/70 dark:border-gray-700/50 ${isCollapsed ? 'w-16' : 'w-64'
             }`}
           style={{
             backdropFilter: 'blur(20px)',
@@ -251,7 +254,7 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
               </div>
               <button
                 onClick={handleToggle}
-                className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100/50 transition-colors duration-200 z-10 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700/50 ${isCollapsed ? 'left-1/2 -translate-x-1/2' : 'right-2'
+                className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100/50 transition-colors duration-200 z-10 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700/50 ${isCollapsed ? 'left-1/2 -translate-x-1/2' : 'left-2'
                   }`}
               >
                 <Menu className='h-4 w-4' />
@@ -308,16 +311,10 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                   const decodedActive = decodeURIComponent(active);
                   const decodedItemHref = decodeURIComponent(item.href);
 
-                  // 提取路径名（不包含查询参数）
-                  const activePathname = decodedActive.split('?')[0];
-                  const itemPathname = decodedItemHref.split('?')[0];
-
                   const isActive =
                     decodedActive === decodedItemHref ||
                     (decodedActive.startsWith('/douban') &&
-                      decodedActive.includes(`type=${typeMatch}`)) ||
-                    // 对于没有type参数的路径，只比较路径名
-                    (!typeMatch && activePathname === itemPathname);
+                      decodedActive.includes(`type=${typeMatch}`));
                   const Icon = item.icon;
                   return (
                     <Link
@@ -340,12 +337,17 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                 })}
               </div>
             </div>
+
+            {/* 底部功能按钮 - 仅在展开时显示 */}
+            {!isCollapsed && (
+              <div className='p-4 border-t border-gray-200/30 dark:border-gray-700/30 space-y-2'>
+                <ThemeToggle />
+                <UserMenu />
+                <UpdateNotification />
+              </div>
+            )}
           </div>
         </aside>
-        <div
-          className={`transition-all duration-300 sidebar-offset ${isCollapsed ? 'w-16' : 'w-64'
-            }`}
-        ></div>
       </div>
     </SidebarContext.Provider>
   );
