@@ -241,7 +241,18 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
             WebkitBackdropFilter: 'blur(20px)',
           }}
         >
-          <div className='flex h-full flex-col'>
+          <div className='flex h-full flex-col'
+              onMouseEnter={() => {
+                if (isCollapsed) {
+                  handleToggle();
+                }
+              }}
+              onMouseLeave={() => {
+                if (!isCollapsed) {
+                  handleToggle();
+                }
+              }}
+            >
             {/* 顶部 Logo 区域 */}
             <div className='relative h-16'>
               <div
@@ -259,6 +270,15 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
               >
                 <Menu className='h-4 w-4' />
               </button>
+
+              {/* 右上角功能按钮 - 仅在展开时显示 */}
+              {!isCollapsed && (
+                <div className='absolute top-2 right-2 flex items-center gap-1'>
+                  <ThemeToggle />
+                  <UserMenu />
+                  <UpdateNotification />
+                </div>
+              )}
             </div>
 
             {/* 首页和搜索导航 */}
