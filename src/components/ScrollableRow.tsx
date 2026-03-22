@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface ScrollableRowProps {
   children: React.ReactNode;
@@ -7,6 +7,7 @@ interface ScrollableRowProps {
   bottomPadding?: string;
   multiRow?: boolean; // 是否启用多行模式
   rows?: number; // 行数，默认为2
+  doubleRowScroll?: boolean; // 新增：双行横向滚动模式
 }
 
 export default function ScrollableRow({
@@ -15,6 +16,7 @@ export default function ScrollableRow({
   bottomPadding = 'pb-12 sm:pb-14',
   multiRow = false,
   rows = 2,
+  doubleRowScroll = false,
 }: ScrollableRowProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
@@ -106,17 +108,44 @@ export default function ScrollableRow({
       }}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div
-        ref={containerRef}
-        className={`${
-          multiRow
-            ? `grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-8 xl:grid-cols-9 gap-2 sm:gap-4 ${bottomPadding} px-4 sm:px-6`
-            : `flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`
-        }`}
-        onScroll={multiRow ? undefined : checkScroll}
-        style={multiRow ? { overflow: 'visible' } : undefined}
-      >
-        {children}
+      <div className={`${doubleRowScroll ? 'flex flex-col gap-2' : 'block'}`}>
+        {doubleRowScroll ? (
+          <>
+            {/* 第一行 */}
+            <div
+              ref={containerRef}
+              className={`flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
+              onScroll={checkScroll}
+            >
+              {React.Children.map(children, (child, index) => {
+                if (index % 2 === 0) return child;
+                return null;
+              })}
+            </div>
+            {/* 第二行 */}
+            <div
+              className={`flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
+            >
+              {React.Children.map(children, (child, index) => {
+                if (index % 2 === 1) return child;
+                return null;
+              })}
+            </div>
+          </>
+        ) : (
+          <div
+            ref={containerRef}
+            className={`${
+              multiRow
+                ? `grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-8 xl:grid-cols-10 gap-2 sm:gap-4 ${bottomPadding} px-4 sm:px-6`
+                : `flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`
+            }`}
+            onScroll={multiRow ? undefined : checkScroll}
+            style={multiRow ? { overflow: 'visible' } : undefined}
+          >
+            {children}
+          </div>
+        )}
       </div>
       {/* 仅在非多行模式下显示滚动按钮 */}
       {!multiRow && showLeftScroll && (
