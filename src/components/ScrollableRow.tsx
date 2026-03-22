@@ -5,12 +5,16 @@ interface ScrollableRowProps {
   children: React.ReactNode;
   scrollDistance?: number;
   bottomPadding?: string;
+  multiRow?: boolean; // 是否启用多行模式
+  rows?: number; // 行数，默认为2
 }
 
 export default function ScrollableRow({
   children,
   scrollDistance = 1000,
   bottomPadding = 'pb-12 sm:pb-14',
+  multiRow = false,
+  rows = 2,
 }: ScrollableRowProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
@@ -104,12 +108,18 @@ export default function ScrollableRow({
     >
       <div
         ref={containerRef}
-        className={`flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
-        onScroll={checkScroll}
+        className={`${
+          multiRow
+            ? `grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-4 ${bottomPadding} px-4 sm:px-6`
+            : `flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`
+        }`}
+        onScroll={multiRow ? undefined : checkScroll}
+        style={multiRow ? { overflow: 'visible' } : undefined}
       >
         {children}
       </div>
-      {showLeftScroll && (
+      {/* 仅在非多行模式下显示滚动按钮 */}
+      {!multiRow && showLeftScroll && (
         <div
           className={`hidden sm:flex absolute left-0 top-0 bottom-0 w-16 items-center justify-center z-[600] transition-opacity duration-200 ${
             isHovered ? 'opacity-100' : 'opacity-0'
@@ -138,7 +148,7 @@ export default function ScrollableRow({
         </div>
       )}
 
-      {showRightScroll && (
+      {!multiRow && showRightScroll && (
         <div
           className={`hidden sm:flex absolute right-0 top-0 bottom-0 w-16 items-center justify-center z-[600] transition-opacity duration-200 ${
             isHovered ? 'opacity-100' : 'opacity-0'
