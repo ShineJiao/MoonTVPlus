@@ -302,12 +302,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow multiRow={true} rows={2}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -316,7 +316,7 @@ function HomeClient() {
                 : hotMovies.map((movie) => (
                     <div
                       key={movie.id}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <VideoCard
                         id={movie.id}
@@ -342,12 +342,12 @@ function HomeClient() {
                 热播短剧
               </h2>
             </div>
-            <ScrollableRow multiRow={true} rows={2}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -356,7 +356,7 @@ function HomeClient() {
                 : hotDuanju.map((duanju) => (
                     <div
                       key={duanju.id + duanju.source}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <VideoCard
                         id={duanju.id}
@@ -396,12 +396,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow multiRow={true} rows={2}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
                         <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
@@ -421,7 +421,7 @@ function HomeClient() {
                     return todayAnimes.map((anime, index) => (
                       <div
                         key={`${anime.id}-${index}`}
-                        className='w-full'
+                        className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                       >
                         <VideoCard
                           from='douban'
@@ -461,12 +461,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow multiRow={true} rows={2}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -475,7 +475,7 @@ function HomeClient() {
                 : hotTvShows.map((tvShow) => (
                     <div
                       key={tvShow.id}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <VideoCard
                         id={tvShow.id}
@@ -507,12 +507,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow multiRow={true} rows={2}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -521,7 +521,7 @@ function HomeClient() {
                 : hotVarietyShows.map((varietyShow) => (
                     <div
                       key={varietyShow.id}
-                      className='w-full'
+                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                     >
                       <VideoCard
                         id={varietyShow.id}
