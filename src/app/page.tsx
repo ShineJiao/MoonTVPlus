@@ -224,32 +224,24 @@ function HomeClient() {
 
           if (moviesData.code === 200) {
             setHotMovies(moviesData.list);
-            if (moviesData.list && moviesData.list.length > 0) {
-              setCache('homepage_movies', moviesData.list);
-            }
+            setCache('homepage_movies', moviesData.list);
           }
           if (tvShowsData.code === 200) {
             setHotTvShows(tvShowsData.list);
-            if (tvShowsData.list && tvShowsData.list.length > 0) {
-              setCache('homepage_tvshows', tvShowsData.list);
-            }
+            setCache('homepage_tvshows', tvShowsData.list);
           }
           if (varietyShowsData.code === 200) {
             setHotVarietyShows(varietyShowsData.list);
-            if (varietyShowsData.list && varietyShowsData.list.length > 0) {
-              setCache('homepage_variety', varietyShowsData.list);
-            }
+            setCache('homepage_variety', varietyShowsData.list);
           }
           setBangumiCalendarData(bangumiCalendarData);
-          if (bangumiCalendarData && bangumiCalendarData.length > 0) {
-            setCache('homepage_bangumi', bangumiCalendarData);
-          }
+          setCache('homepage_bangumi', bangumiCalendarData);
 
           try {
             const duanjuResponse = await fetch('/api/duanju/recommends');
             if (duanjuResponse.ok) {
               const duanjuResult = await duanjuResponse.json();
-              if (duanjuResult.code === 200 && duanjuResult.data && duanjuResult.data.length > 0) {
+              if (duanjuResult.code === 200 && duanjuResult.data) {
                 setHotDuanju(duanjuResult.data);
                 setCache('homepage_duanju', duanjuResult.data);
               }
@@ -262,7 +254,7 @@ function HomeClient() {
             const response = await fetch('/api/tmdb/upcoming');
             if (response.ok) {
               const result = await response.json();
-              if (result.code === 200 && result.data && result.data.length > 0) {
+              if (result.code === 200 && result.data) {
                 const sorted = [...result.data].sort((a, b) => {
                   const dateA = new Date(a.release_date || '9999-12-31').getTime();
                   const dateB = new Date(b.release_date || '9999-12-31').getTime();
@@ -310,12 +302,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow multiRow={true} rows={2}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -324,7 +316,7 @@ function HomeClient() {
                 : hotMovies.map((movie) => (
                     <div
                       key={movie.id}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <VideoCard
                         id={movie.id}
@@ -334,7 +326,6 @@ function HomeClient() {
                         rate={movie.rate}
                         type='movie'
                         from='douban'
-                        douban_id={movie.id ? parseInt(movie.id) : undefined}
                       />
                     </div>
                   ))}
@@ -351,12 +342,12 @@ function HomeClient() {
                 热播短剧
               </h2>
             </div>
-            <ScrollableRow>
+            <ScrollableRow multiRow={true} rows={2}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -365,7 +356,7 @@ function HomeClient() {
                 : hotDuanju.map((duanju) => (
                     <div
                       key={duanju.id + duanju.source}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <VideoCard
                         id={duanju.id}
@@ -405,12 +396,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow multiRow={true} rows={2}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
                         <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
@@ -430,7 +421,7 @@ function HomeClient() {
                     return todayAnimes.map((anime, index) => (
                       <div
                         key={`${anime.id}-${index}`}
-                        className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                        className='w-full'
                       >
                         <VideoCard
                           from='douban'
@@ -470,12 +461,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow multiRow={true} rows={2}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -484,7 +475,7 @@ function HomeClient() {
                 : hotTvShows.map((tvShow) => (
                     <div
                       key={tvShow.id}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <VideoCard
                         id={tvShow.id}
@@ -494,7 +485,6 @@ function HomeClient() {
                         rate={tvShow.rate}
                         type='tv'
                         from='douban'
-                        douban_id={tvShow.id ? parseInt(tvShow.id) : undefined}
                       />
                     </div>
                   ))}
@@ -517,12 +507,12 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow multiRow={true} rows={2}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
                       key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
                       <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
@@ -531,7 +521,7 @@ function HomeClient() {
                 : hotVarietyShows.map((varietyShow) => (
                     <div
                       key={varietyShow.id}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                      className='w-full'
                     >
                       <VideoCard
                         id={varietyShow.id}
@@ -541,7 +531,6 @@ function HomeClient() {
                         rate={varietyShow.rate}
                         type='tv'
                         from='douban'
-                        douban_id={varietyShow.id ? parseInt(varietyShow.id) : undefined}
                       />
                     </div>
                   ))}
@@ -558,11 +547,11 @@ function HomeClient() {
                 即将上映
               </h2>
             </div>
-            <ScrollableRow>
+            <ScrollableRow multiRow={true} rows={2}>
               {upcomingContent.map((item) => (
                 <div
                   key={`${item.media_type}-${item.id}`}
-                  className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                  className='w-full'
                 >
                   <VideoCard
                     title={item.title}
