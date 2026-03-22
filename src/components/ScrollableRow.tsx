@@ -110,7 +110,7 @@ export default function ScrollableRow({
         ref={containerRef}
         className={`${
           multiRow
-            ? `grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 xl:grid-cols-12 gap-2 sm:gap-4 ${bottomPadding} px-4 sm:px-6`
+            ? `grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-8 xl:grid-cols-9 gap-2 sm:gap-4 ${bottomPadding} px-4 sm:px-6`
             : `flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`
         }`}
         onScroll={multiRow ? undefined : checkScroll}
