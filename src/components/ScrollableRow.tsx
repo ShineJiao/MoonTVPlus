@@ -116,7 +116,7 @@ export default function ScrollableRow({
             style={{
               gridAutoFlow: 'column dense',
               gridTemplateRows: 'repeat(2, minmax(0, 1fr))',
-              gridAutoColumns: 'minmax(96px, 1fr)',
+              gridAutoColumns: 'minmax(96px, 180px)',
             }}
             onScroll={checkScroll}
           >
