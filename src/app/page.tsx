@@ -302,7 +302,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow doubleRowScroll={true}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -342,7 +342,7 @@ function HomeClient() {
                 热播短剧
               </h2>
             </div>
-            <ScrollableRow>
+            <ScrollableRow doubleRowScroll={true}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -396,7 +396,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow doubleRowScroll={true}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -461,7 +461,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow>
+            <ScrollableRow doubleRowScroll={true}>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
