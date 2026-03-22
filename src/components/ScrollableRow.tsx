@@ -108,30 +108,20 @@ export default function ScrollableRow({
       }}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`${doubleRowScroll ? 'flex flex-col gap-2' : 'block'}`}>
+      <div className={`${doubleRowScroll ? 'block' : 'block'}`}>
         {doubleRowScroll ? (
-          <>
-            {/* 第一行 */}
-            <div
-              ref={containerRef}
-              className={`flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
-              onScroll={checkScroll}
-            >
-              {React.Children.map(children, (child, index) => {
-                if (index % 2 === 0) return child;
-                return null;
-              })}
-            </div>
-            {/* 第二行 */}
-            <div
-              className={`flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
-            >
-              {React.Children.map(children, (child, index) => {
-                if (index % 2 === 1) return child;
-                return null;
-              })}
-            </div>
-          </>
+          <div
+            ref={containerRef}
+            className={`grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
+            style={{
+              gridAutoFlow: 'column dense',
+              gridTemplateRows: 'repeat(2, minmax(0, 1fr))',
+              gridAutoColumns: 'minmax(96px, 1fr)',
+            }}
+            onScroll={checkScroll}
+          >
+            {children}
+          </div>
         ) : (
           <div
             ref={containerRef}
