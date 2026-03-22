@@ -112,15 +112,16 @@ export default function ScrollableRow({
         {doubleRowScroll ? (
           <div
             ref={containerRef}
-            className={`grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
-            style={{
-              gridAutoFlow: 'column dense',
-              gridTemplateRows: 'repeat(2, minmax(0, 1fr))',
-              gridAutoColumns: 'minmax(96px, 180px)',
-            }}
+            className={`flex flex-col gap-2 sm:gap-4 overflow-x-auto scrollbar-hide py-1 sm:py-2 ${bottomPadding} px-4 sm:px-6`}
             onScroll={checkScroll}
           >
-            {children}
+            {/* 手动分2行显示 */}
+            <div className="flex gap-2 sm:gap-4">
+              {React.Children.toArray(children).slice(0, Math.ceil(React.Children.count(children) / 2))}
+            </div>
+            <div className="flex gap-2 sm:gap-4">
+              {React.Children.toArray(children).slice(Math.ceil(React.Children.count(children) / 2))}
+            </div>
           </div>
         ) : (
           <div
