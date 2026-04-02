@@ -224,24 +224,32 @@ function HomeClient() {
 
           if (moviesData.code === 200) {
             setHotMovies(moviesData.list);
-            setCache('homepage_movies', moviesData.list);
+            if (moviesData.list && moviesData.list.length > 0) {
+              setCache('homepage_movies', moviesData.list);
+            }
           }
           if (tvShowsData.code === 200) {
             setHotTvShows(tvShowsData.list);
-            setCache('homepage_tvshows', tvShowsData.list);
+            if (tvShowsData.list && tvShowsData.list.length > 0) {
+              setCache('homepage_tvshows', tvShowsData.list);
+            }
           }
           if (varietyShowsData.code === 200) {
             setHotVarietyShows(varietyShowsData.list);
-            setCache('homepage_variety', varietyShowsData.list);
+            if (varietyShowsData.list && varietyShowsData.list.length > 0) {
+              setCache('homepage_variety', varietyShowsData.list);
+            }
           }
           setBangumiCalendarData(bangumiCalendarData);
-          setCache('homepage_bangumi', bangumiCalendarData);
+          if (bangumiCalendarData && bangumiCalendarData.length > 0) {
+            setCache('homepage_bangumi', bangumiCalendarData);
+          }
 
           try {
             const duanjuResponse = await fetch('/api/duanju/recommends');
             if (duanjuResponse.ok) {
               const duanjuResult = await duanjuResponse.json();
-              if (duanjuResult.code === 200 && duanjuResult.data) {
+              if (duanjuResult.code === 200 && duanjuResult.data && duanjuResult.data.length > 0) {
                 setHotDuanju(duanjuResult.data);
                 setCache('homepage_duanju', duanjuResult.data);
               }
@@ -254,7 +262,7 @@ function HomeClient() {
             const response = await fetch('/api/tmdb/upcoming');
             if (response.ok) {
               const result = await response.json();
-              if (result.code === 200 && result.data) {
+              if (result.code === 200 && result.data && result.data.length > 0) {
                 const sorted = [...result.data].sort((a, b) => {
                   const dateA = new Date(a.release_date || '9999-12-31').getTime();
                   const dateB = new Date(b.release_date || '9999-12-31').getTime();
@@ -302,7 +310,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow doubleRowScroll={true}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -326,6 +334,7 @@ function HomeClient() {
                         rate={movie.rate}
                         type='movie'
                         from='douban'
+                        douban_id={movie.id ? parseInt(movie.id) : undefined}
                       />
                     </div>
                   ))}
@@ -342,7 +351,7 @@ function HomeClient() {
                 热播短剧
               </h2>
             </div>
-            <ScrollableRow doubleRowScroll={true}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -396,7 +405,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow doubleRowScroll={true}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -461,7 +470,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow doubleRowScroll={true}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -485,6 +494,7 @@ function HomeClient() {
                         rate={tvShow.rate}
                         type='tv'
                         from='douban'
+                        douban_id={tvShow.id ? parseInt(tvShow.id) : undefined}
                       />
                     </div>
                   ))}
@@ -507,7 +517,7 @@ function HomeClient() {
                 <ChevronRight className='w-4 h-4 ml-1' />
               </Link>
             </div>
-            <ScrollableRow doubleRowScroll={true}>
+            <ScrollableRow>
               {loading
                 ? Array.from({ length: 8 }).map((_, index) => (
                     <div
@@ -531,6 +541,7 @@ function HomeClient() {
                         rate={varietyShow.rate}
                         type='tv'
                         from='douban'
+                        douban_id={varietyShow.id ? parseInt(varietyShow.id) : undefined}
                       />
                     </div>
                   ))}
@@ -547,11 +558,11 @@ function HomeClient() {
                 即将上映
               </h2>
             </div>
-            <ScrollableRow multiRow={true} rows={2}>
+            <ScrollableRow>
               {upcomingContent.map((item) => (
                 <div
                   key={`${item.media_type}-${item.id}`}
-                  className='w-full'
+                  className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
                 >
                   <VideoCard
                     title={item.title}
