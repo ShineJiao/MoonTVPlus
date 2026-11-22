@@ -27,7 +27,7 @@ import {
   TVBoxBridgeSiteInfo,
   TVBoxBridgeStatusInfo,
 } from '@/lib/tvbox-bridge.shared';
-import type { TVBoxIngestPreview } from '@/lib/tvbox-ingest.shared';
+import type { TVBoxLiveIngestPreview } from '@/lib/tvbox-live-ingest.shared';
 
 import Toast, { ToastProps } from './Toast';
 import TVBoxBridgeDeployDialog from './TVBoxBridgeDeployDialog';
@@ -156,10 +156,10 @@ export default function TVBoxBridgeAdminComponent({
   const [selectedDepotUrl, setSelectedDepotUrl] = useState('');
   const [pickingDepotUrl, setPickingDepotUrl] = useState<string | null>(null);
 
-  // 直接导入 TVBox 订阅源
+  // 直接导入 TVBox 电视源
   const [ingestUrl, setIngestUrl] = useState('');
   const [ingestLoading, setIngestLoading] = useState(false);
-  const [ingestData, setIngestData] = useState<TVBoxIngestPreview | null>(null);
+  const [ingestData, setIngestData] = useState<TVBoxLiveIngestPreview | null>(null);
   const [ingestSelected, setIngestSelected] = useState<Set<string>>(new Set());
   const [ingestImporting, setIngestImporting] = useState(false);
 
@@ -321,7 +321,7 @@ export default function TVBoxBridgeAdminComponent({
     }
   };
 
-  // ---------- 直接导入订阅源 ----------
+  // ---------- 直接导入电视源 ----------
   const parseIngest = async () => {
     const url = ingestUrl.trim();
     if (!url) {
@@ -331,14 +331,14 @@ export default function TVBoxBridgeAdminComponent({
     setIngestLoading(true);
     try {
       const response = await fetch(
-        `/api/admin/tvbox-ingest?url=${encodeURIComponent(url)}`
+        `/api/admin/tvbox-live-ingest?url=${encodeURIComponent(url)}`
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || '订阅解析失败');
-      const preview = data as TVBoxIngestPreview;
+      const preview = data as TVBoxLiveIngestPreview;
       setIngestData(preview);
-      setIngestSelected(new Set(preview.sites.map((site) => site.key)));
-      notify(`解析完成：${preview.usableSites} 个可用 CMS 源`, 'success');
+      setIngestSelected(new Set(preview.items.map((item) => item.key)));
+      notify(`解析完成：${preview.usableLives} 个可用电视源`, 'success');
     } catch (error) {
       notify(error instanceof Error ? error.message : '订阅解析失败', 'error');
     } finally {
@@ -349,12 +349,12 @@ export default function TVBoxBridgeAdminComponent({
   const importIngest = async () => {
     if (!ingestData) return;
     if (ingestSelected.size === 0) {
-      notify('请至少选择一个站点', 'error');
+      notify('请至少选择一个电视源', 'error');
       return;
     }
     setIngestImporting(true);
     try {
-      const response = await fetch('/api/admin/tvbox-ingest', {
+      const response = await fetch('/api/admin/tvbox-live-ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -365,7 +365,7 @@ export default function TVBoxBridgeAdminComponent({
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || '导入失败');
       notify(
-        `已导入 ${data.added} 个视频源${
+        `已导入 ${data.added} 个电视源${
           data.skipped ? `，跳过 ${data.skipped} 个重复项` : ''
         }`,
         'success'
@@ -602,12 +602,12 @@ export default function TVBoxBridgeAdminComponent({
         </button>
       </div>
 
-      {/* 直接导入订阅源 */}
+      {/* 直接导入电视源 */}
       <div className='space-y-4 rounded-lg border border-emerald-200 p-4 dark:border-emerald-800'>
         <SectionTitle
           icon={<Download size={18} />}
-          title='直接导入 TVBox 订阅源'
-          desc='解析订阅里的 CMS 站点并加入视频源列表，无需部署桥接；导入后与普通视频源统一管理、统一搜索。'
+          title='直接导入 TVBox 电视源'
+          desc='解析订阅里的 lives 直播列表并加入电视源，无需部署桥接；导入后与手动添加的直播源统一管理、统一刷新。'
         />
         <div className='flex flex-col gap-3 sm:flex-row'>
           <input
@@ -640,10 +640,13 @@ export default function TVBoxBridgeAdminComponent({
           <div className='space-y-3'>
             <div className='flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400'>
               <span>
-                共 {ingestData.totalSites} 个站点，可用 CMS 源{' '}
-                {ingestData.usableSites} 个
+                共 {ingestData.totalLives} 个直播源，可用 {ingestData.usableLives}{' '}
+                个
                 {ingestData.duplicates > 0
                   ? `（去重 ${ingestData.duplicates}）`
+                  : ''}
+                {ingestData.skippedLocal > 0
+                  ? `，跳过 ${ingestData.skippedLocal} 个本机代理/内嵌源`
                   : ''}
                 {ingestData.repos > 0 ? `，展开仓库 ${ingestData.repos} 个` : ''}
               </span>
@@ -653,7 +656,7 @@ export default function TVBoxBridgeAdminComponent({
                   className='text-blue-600 hover:underline dark:text-blue-400'
                   onClick={() =>
                     setIngestSelected(
-                      new Set(ingestData.sites.map((site) => site.key))
+                      new Set(ingestData.items.map((item) => item.key))
                     )
                   }
                 >
@@ -669,26 +672,26 @@ export default function TVBoxBridgeAdminComponent({
               </div>
             </div>
 
-            {ingestData.sites.length === 0 ? (
+            {ingestData.items.length === 0 ? (
               <p className='text-sm text-amber-600 dark:text-amber-400'>
-                该订阅里没有可直接使用的 CMS 站点（可能全是 spider 源）。
+                该订阅里没有可直接使用的直播源（可能全部依赖 TVBox 本机代理或内嵌频道）。
               </p>
             ) : (
               <>
                 <div className='max-h-72 space-y-1.5 overflow-auto rounded-lg border border-gray-200 p-2 dark:border-gray-700'>
-                  {ingestData.sites.map((site) => (
+                  {ingestData.items.map((item) => (
                     <label
-                      key={site.key}
+                      key={item.key}
                       className='flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-800'
                     >
                       <input
                         type='checkbox'
-                        checked={ingestSelected.has(site.key)}
+                        checked={ingestSelected.has(item.key)}
                         onChange={(e) => {
                           setIngestSelected((prev) => {
                             const next = new Set(prev);
-                            if (e.target.checked) next.add(site.key);
-                            else next.delete(site.key);
+                            if (e.target.checked) next.add(item.key);
+                            else next.delete(item.key);
                             return next;
                           });
                         }}
@@ -696,10 +699,10 @@ export default function TVBoxBridgeAdminComponent({
                       />
                       <span className='min-w-0'>
                         <span className='block truncate text-sm text-gray-900 dark:text-gray-100'>
-                          {site.name}
+                          {item.name}
                         </span>
                         <span className='block truncate text-[11px] text-gray-400'>
-                          {site.api}
+                          {item.url}
                         </span>
                       </span>
                     </label>
@@ -719,7 +722,7 @@ export default function TVBoxBridgeAdminComponent({
                     ) : (
                       <Save size={16} />
                     )}
-                    导入为视频源
+                    导入为电视源
                   </button>
                 </div>
               </>

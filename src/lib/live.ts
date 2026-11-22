@@ -4,6 +4,7 @@ import { getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
 import { fetchLive } from '@/lib/live-http';
 import { parseLivePlaylist, parseTVBoxLiveGroups } from '@/lib/live-playlist';
+import { fetchSource } from '@/lib/source-fetch';
 import {
   fetchLiveSource,
   getLiveSource,
@@ -120,7 +121,35 @@ export async function refreshLiveChannels(
       liveInfo.tvbox.configUrl
     );
   } else {
-    const response = await fetchLiveSource(liveInfo, liveInfo.url);
+    // 部署环境可能无法直连部分直播列表站点；直连失败时再走采集中转兜底
+    const canRelay =
+      !liveInfo.tvbox &&
+      /^https?:/i.test(liveInfo.url) &&
+      !isTVBoxLiveProxyUrl(liveInfo.url);
+
+    let response: Response;
+    let playlistBase = liveInfo.url;
+    try {
+      response = await fetchLiveSource(liveInfo, liveInfo.url);
+      playlistBase = response.url || liveInfo.url;
+      if (!response.ok && canRelay) {
+        response = await fetchSource(
+          liveInfo.url,
+          { headers: { 'User-Agent': ua } },
+          { directTimeoutMs: 5000, relayTimeoutMs: 20000 }
+        );
+        playlistBase = liveInfo.url;
+      }
+    } catch (error) {
+      if (!canRelay) throw error;
+      response = await fetchSource(
+        liveInfo.url,
+        { headers: { 'User-Agent': ua } },
+        { directTimeoutMs: 5000, relayTimeoutMs: 20000 }
+      );
+      playlistBase = liveInfo.url;
+    }
+
     if (!response.ok) {
       const mitigated = response.headers.get('cf-mitigated');
       throw new Error(
@@ -130,11 +159,7 @@ export async function refreshLiveChannels(
       );
     }
     const data = await response.text();
-    result = parseLivePlaylist(
-      liveInfo.key,
-      data,
-      response.url || liveInfo.tvbox?.configUrl || liveInfo.url
-    );
+    result = parseLivePlaylist(liveInfo.key, data, playlistBase);
   }
   if (liveInfo.tvbox) {
     for (const channel of result.channels) {

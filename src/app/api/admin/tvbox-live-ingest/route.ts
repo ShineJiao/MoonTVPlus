@@ -7,9 +7,9 @@ import type { AdminConfig } from '@/lib/admin.types';
 import { configSelfCheck, getConfig, setCachedConfig } from '@/lib/config';
 import { db } from '@/lib/db';
 import {
-  fetchTVBoxIngestPreview,
-  importTVBoxIngestSites,
-} from '@/lib/tvbox-ingest.server';
+  fetchTVBoxLiveIngestPreview,
+  importTVBoxLiveSources,
+} from '@/lib/tvbox-live-ingest.server';
 
 export const runtime = 'nodejs';
 
@@ -38,7 +38,7 @@ function storageUnsupported() {
   return null;
 }
 
-/** 解析订阅：返回可导入的 CMS 站点列表，不写入配置。 */
+/** 解析订阅：返回可导入的电视源列表，不写入配置。 */
 export async function GET(request: NextRequest) {
   const unsupported = storageUnsupported();
   if (unsupported) return unsupported;
@@ -52,10 +52,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const preview = await fetchTVBoxIngestPreview(url);
+    const preview = await fetchTVBoxLiveIngestPreview(url);
     return NextResponse.json(preview);
   } catch (error) {
-    console.error('[tvbox-ingest] 解析失败:', error);
+    console.error('[tvbox-live-ingest] 解析失败:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '订阅解析失败' },
       { status: 400 }
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** 导入订阅中的站点：写入 SourceConfig 并保存配置。 */
+/** 导入订阅中的直播源：写入 LiveConfig 并保存配置。 */
 export async function POST(request: NextRequest) {
   const unsupported = storageUnsupported();
   if (unsupported) return unsupported;
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = JSON.parse(JSON.stringify(await getConfig())) as AdminConfig;
-    const result = await importTVBoxIngestSites(
+    const result = await importTVBoxLiveSources(
       config,
       url,
       Array.isArray(body.keys) ? body.keys : undefined
@@ -98,10 +98,10 @@ export async function POST(request: NextRequest) {
       success: true,
       added: result.added,
       skipped: result.skipped,
-      total: result.preview.usableSites,
+      total: result.preview.usableLives,
     });
   } catch (error) {
-    console.error('[tvbox-ingest] 导入失败:', error);
+    console.error('[tvbox-live-ingest] 导入失败:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '订阅导入失败' },
       { status: 500 }
