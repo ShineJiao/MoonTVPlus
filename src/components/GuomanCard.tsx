@@ -12,6 +12,12 @@ interface GuomanCardProps {
 export default function GuomanCard({ item }: GuomanCardProps) {
   const [imageSrc, setImageSrc] = useState(item.poster || item.cover);
 
+  // 检索时忽略“第X季”这类季数后缀，只用主标题
+  const searchKeyword =
+    item.title
+      .replace(/\s*第[0-9一二三四五六七八九十百千零〇两]+季/g, '')
+      .trim() || item.title;
+
   const meta = [
     `${item.weekdayLabel}${item.pubTime ? ` ${item.pubTime}` : ''} 更新`,
     item.latest,
@@ -21,7 +27,7 @@ export default function GuomanCard({ item }: GuomanCardProps) {
 
   return (
     <Link
-      href={`/search?q=${encodeURIComponent(item.title)}`}
+      href={`/search?q=${encodeURIComponent(searchKeyword)}`}
       className='group block w-full'
     >
       <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700'>
