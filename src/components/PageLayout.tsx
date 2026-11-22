@@ -79,14 +79,7 @@ const PageLayout = ({ children, activePath = '/', hideNavigation = false }: Page
         )}
 
         {/* 主要布局容器 */}
-        <div className='relative z-10 flex md:grid md:grid-cols-[auto_1fr] w-full min-h-screen md:min-h-auto'>
-          {/* 侧边栏 - 桌面端显示，移动端隐藏 */}
-          {!hideNavigation && (
-            <div className='hidden md:block'>
-              <Sidebar activePath={activePath} />
-            </div>
-          )}
-
+        <div className='relative z-10 flex md:grid md:grid-cols-[1fr_auto] w-full min-h-screen md:min-h-auto'>
           {/* 主内容区域 */}
           <div className='relative min-w-0 flex-1 transition-all duration-300'>
             {/* 桌面端左上角返回按钮 */}
@@ -115,6 +108,13 @@ const PageLayout = ({ children, activePath = '/', hideNavigation = false }: Page
               {children}
             </main>
           </div>
+
+          {/* 侧边栏 - 桌面端显示在右侧，移动端隐藏 */}
+          {!hideNavigation && (
+            <div className='hidden md:block'>
+              <Sidebar activePath={activePath} />
+            </div>
+          )}
         </div>
 
         {/* 移动端底部导航 */}

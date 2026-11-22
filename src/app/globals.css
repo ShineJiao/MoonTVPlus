@@ -1020,15 +1020,24 @@ html[data-loading-style='grid'] .mtv-err-box {
   }
 }
 
-/* 加载遮罩用 fixed 铺满整个视口，桌面端要把左侧固定侧边栏的宽度让出来，
-   否则内容会按「含侧边栏的整屏」居中，看起来偏左。左偏移跟随侧边栏展开/收起：
+/* 加载遮罩用 fixed 铺满整个视口，桌面端要把右侧固定侧边栏的宽度让出来，
+   否则内容会按「含侧边栏的整屏」居中，看起来偏右。右偏移跟随侧边栏展开/收起：
    Sidebar 收起时会在 <html> 上写 data-sidebar-collapsed。移动端无侧边栏，不偏移。 */
 @media (min-width: 768px) {
   .mtv-load-overlay {
-    left: 16rem; /* 侧边栏展开 = w-64 */
+    left: 0;
+    right: 16rem; /* 侧边栏展开 = w-64 */
   }
   html[data-sidebar-collapsed] .mtv-load-overlay {
-    left: 4rem; /* 侧边栏收起 = w-16 */
+    right: 4rem; /* 侧边栏收起 = w-16 */
+  }
+
+  /* 右侧固定悬浮按钮/下拉面板：桌面端避让右侧栏，随侧边栏展开/收起同步移动 */
+  .sidebar-safe-right {
+    right: 17rem; /* 侧边栏展开 = w-64 + 1rem */
+  }
+  html[data-sidebar-collapsed] .sidebar-safe-right {
+    right: 5rem; /* 侧边栏收起 = w-16 + 1rem */
   }
 }
 
