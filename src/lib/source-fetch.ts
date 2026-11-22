@@ -2,13 +2,17 @@
  * 采集源请求工具。
  *
  * 部分部署环境（如受限出网的 Serverless）无法直连部分采集站，
- * 表现为 ECONNRESET / ETIMEDOUT。这里在直连失败时自动改用中转地址重试。
+ * 表现为 ECONNRESET / ETIMEDOUT。这里让直连与中转并行竞速：
+ * 直连正常时优先使用直连结果，直连失败/过慢时由中转接管。
  *
  * 中转地址格式：https://relay.example.com/?url= （直接拼接目标 URL）
  * 可通过环境变量 SOURCE_RELAY 配置多个，英文逗号分隔。
  */
 
 const DEFAULT_RELAYS = ['https://pz.v88.qzz.io/?url='];
+
+// 直连迟迟没有结果时，推迟这么久再启动中转，避免正常环境下白白占用中转
+const RELAY_HEDGE_DELAY_MS = 800;
 
 function getRelays(): string[] {
   const fromEnv = (process.env.SOURCE_RELAY || '')
@@ -18,19 +22,29 @@ function getRelays(): string[] {
   return fromEnv.length > 0 ? fromEnv : DEFAULT_RELAYS;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createController(externalSignal?: AbortSignal | null): AbortController {
+  const controller = new AbortController();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else
+      externalSignal.addEventListener('abort', () => controller.abort(), {
+        once: true,
+      });
+  }
+  return controller;
+}
+
 async function timedFetch(
   url: string,
   init: RequestInit,
-  timeoutMs: number
+  timeoutMs: number,
+  controller: AbortController
 ): Promise<Response> {
-  const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const externalSignal = init.signal;
-  const onAbort = () => controller.abort();
-  if (externalSignal) {
-    if (externalSignal.aborted) controller.abort();
-    else externalSignal.addEventListener('abort', onAbort);
-  }
   try {
     return await fetch(url, {
       ...init,
@@ -39,13 +53,14 @@ async function timedFetch(
     });
   } finally {
     clearTimeout(timer);
-    if (externalSignal) externalSignal.removeEventListener('abort', onAbort);
   }
 }
 
 // 网络错误或服务端错误（含防盗链 403）时才值得走中转
 function shouldRetryViaRelay(response: Response): boolean {
-  return response.status === 403 || response.status === 429 || response.status >= 500;
+  return (
+    response.status === 403 || response.status === 429 || response.status >= 500
+  );
 }
 
 function hostOf(url: string): string {
@@ -76,43 +91,87 @@ export async function fetchSource(
   options: { directTimeoutMs?: number; relayTimeoutMs?: number } = {}
 ): Promise<Response> {
   const directTimeoutMs = options.directTimeoutMs ?? 3000;
-  const relayTimeoutMs = options.relayTimeoutMs ?? 4500;
+  const relayTimeoutMs = options.relayTimeoutMs ?? 8000;
+  const relays = getRelays();
   const host = hostOf(url);
 
-  let directResponse: Response | null = null;
+  const directController = createController(init.signal);
+  const baseInit: RequestInit = { ...init, cache: 'no-store' };
+
   let directError: unknown = null;
-  try {
-    directResponse = await timedFetch(url, init, directTimeoutMs);
-    if (!shouldRetryViaRelay(directResponse)) {
-      return directResponse;
-    }
-    console.warn(
-      `[source] 直连返回 ${directResponse.status} host=${host}，尝试中转`
-    );
-  } catch (error) {
-    directError = error;
-    console.warn(`[source] 直连失败 host=${host} ${describeError(error)}`);
-  }
+  let relayAborted = false;
+  let activeRelayController: AbortController | null = null;
+  const abortRelay = () => {
+    relayAborted = true;
+    activeRelayController?.abort();
+  };
 
-  for (const relay of getRelays()) {
-    try {
-      const response = await timedFetch(`${relay}${url}`, init, relayTimeoutMs);
-      if (response.ok) {
-        console.info(`[source] 中转成功 host=${host} relay=${hostOf(relay)}`);
-        return response;
+  const directLane = timedFetch(
+    url,
+    baseInit,
+    directTimeoutMs,
+    directController
+  ).then(
+    (response) => {
+      // 直连返回可用的响应就直接用，不再走中转
+      if (!shouldRetryViaRelay(response)) {
+        return { kind: 'direct' as const, response };
       }
-      console.warn(
-        `[source] 中转返回 ${response.status} host=${host} relay=${hostOf(relay)}`
-      );
-    } catch (error) {
-      console.warn(
-        `[source] 中转失败 host=${host} relay=${hostOf(relay)} ${describeError(error)}`
-      );
+      console.warn(`[source] 直连返回 ${response.status} host=${host}，尝试中转`);
+      throw new Error(`HTTP ${response.status}`);
+    },
+    (error) => {
+      directError = error;
+      console.warn(`[source] 直连失败 host=${host} ${describeError(error)}`);
+      throw error;
     }
-  }
+  );
 
-  if (directResponse) return directResponse;
-  throw directError instanceof Error ? directError : new Error('fetch failed');
+  const relayLane = (async () => {
+    await delay(RELAY_HEDGE_DELAY_MS);
+    for (const relay of relays) {
+      if (relayAborted) break;
+      // 每个中转都用独立的控制器，避免上一个超时后连累后续重试
+      const controller = createController(init.signal);
+      activeRelayController = controller;
+      try {
+        const response = await timedFetch(
+          `${relay}${url}`,
+          baseInit,
+          relayTimeoutMs,
+          controller
+        );
+        if (response.ok) {
+          console.info(
+            `[source] 中转成功 host=${host} relay=${hostOf(relay)}`
+          );
+          return { kind: 'relay' as const, response };
+        }
+        console.warn(
+          `[source] 中转返回 ${response.status} host=${host} relay=${hostOf(relay)}`
+        );
+      } catch (error) {
+        console.warn(
+          `[source] 中转失败 host=${host} relay=${hostOf(relay)} ${describeError(
+            error
+          )}`
+        );
+      }
+    }
+    throw new Error('relay failed');
+  })();
+
+  try {
+    const winner = await Promise.any([directLane, relayLane]);
+    // 只中断落败的那一路，避免影响胜出响应的 body 读取
+    if (winner.kind === 'direct') abortRelay();
+    else directController.abort();
+    return winner.response;
+  } catch {
+    directController.abort();
+    abortRelay();
+    throw directError instanceof Error ? directError : new Error('fetch failed');
+  }
 }
 
 export function isRelayUrl(url: string): boolean {

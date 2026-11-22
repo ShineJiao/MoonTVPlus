@@ -55,7 +55,7 @@ export async function getDuanjuSources(): Promise<DuanjuSource[]> {
       try {
         const classUrl = `${source.api}?ac=list`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 9000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetchSource(classUrl, {
           headers: API_CONFIG.search.headers,

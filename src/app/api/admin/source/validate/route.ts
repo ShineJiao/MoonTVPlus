@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 
           // 设置超时控制
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 20000);
 
           try {
             const response = await fetchSource(searchUrl, {

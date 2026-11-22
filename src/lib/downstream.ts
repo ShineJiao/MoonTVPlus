@@ -29,7 +29,7 @@ async function searchWithCache(
   query: string,
   page: number,
   url: string,
-  timeoutMs = 8000
+  timeoutMs = 12000
 ): Promise<{ results: SearchResult[]; pageCount?: number }> {
   // 先查缓存
   const cached = getCachedSearchPage(apiSite.key, query, page);
@@ -214,7 +214,7 @@ export async function getDetailFromApi(
   const detailUrl = `${apiSite.api}${API_CONFIG.detail.path}${id}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   const response = await fetchSource(detailUrl, {
     headers: API_CONFIG.detail.headers,
@@ -302,7 +302,7 @@ export async function getDetailFromApiV2(
   const detailUrl = `${apiSite.api}${API_CONFIG.detail.path}${id}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   const response = await fetchSource(detailUrl, {
     headers: API_CONFIG.detail.headers,
@@ -386,7 +386,7 @@ async function handleSpecialSourceDetail(
   const detailUrl = `${apiSite.detail}/index.php/vod/detail/id/${id}.html`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   const response = await fetchSource(detailUrl, {
     headers: API_CONFIG.detail.headers,
