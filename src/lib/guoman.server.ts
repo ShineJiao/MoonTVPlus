@@ -295,7 +295,12 @@ function fetchYouku(): Promise<RawShow[]> {
 
 const posterCache = new Map<string, { poster: string; at: number }>();
 const POSTER_CACHE_TTL = 6 * 60 * 60 * 1000;
-// 豆瓣接口在服务器直连时容易被风控，优先走公开镜像
+// 移动端搜索接口可按同名检索豆瓣条目，返回带封面的结果
+const DOUBAN_SEARCH_ENDPOINT =
+  'https://m.douban.com/rexxar/api/v2/search/subjects';
+const DOUBAN_MOBILE_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+// 豆瓣接口在服务器直连时容易被风控，subject_suggest 作为兜底镜像
 const DOUBAN_SUGGEST_ENDPOINTS = [
   'https://movie.douban.cmliussss.com/j/subject_suggest',
   'https://movie.douban.cmliussss.net/j/subject_suggest',
@@ -306,6 +311,55 @@ interface DoubanSuggestItem {
   title?: string;
   img?: string;
   type?: string;
+}
+
+interface DoubanSearchTarget {
+  title?: string;
+  cover_url?: string;
+  card_subtitle?: string;
+}
+
+async function requestDoubanSearch(
+  title: string,
+  timeoutMs: number
+): Promise<DoubanSearchTarget[] | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(
+        `${DOUBAN_SEARCH_ENDPOINT}?q=${encodeURIComponent(
+          title
+        )}&type=movie&sort=relevance`,
+        {
+          signal: controller.signal,
+          cache: 'no-store',
+          headers: {
+            'User-Agent': DOUBAN_MOBILE_UA,
+            Referer: 'https://m.douban.com/',
+            Accept: 'application/json, text/plain, */*',
+          },
+        }
+      );
+      if (!response.ok) return null;
+      const data = (await response.json()) as {
+        subjects?: { items?: Array<{ target?: DoubanSearchTarget }> };
+      };
+      const items = data?.subjects?.items;
+      if (!Array.isArray(items)) return null;
+      const targets = items
+        .map((item) => item.target)
+        .filter((target): target is DoubanSearchTarget => !!target?.title);
+      // 偶发空结果多为限流，稍后重试一次
+      if (targets.length > 0 || attempt === 1) return targets;
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
 }
 
 async function requestDoubanSuggest(
@@ -349,32 +403,101 @@ function simplifyTitle(title: string): string {
     .trim();
 }
 
+function matchKey(title: string): string {
+  return normalizeTitle(title).replace(/[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/g, '');
+}
+
+// 豆瓣无封面时会返回占位图，不能当作有效海报
+function isPlaceholderPoster(url: string): boolean {
+  return (
+    !url ||
+    url.includes('/f/frodo/') ||
+    /\/pics\/subject\/[a-z_]+_normal\.(png|jpg|jpeg|webp)$/i.test(url)
+  );
+}
+
+// 移动端返回的是带签名的临时图床链接，转成稳定的豆瓣图片地址
+function toStablePosterUrl(url: string): string {
+  const matched = url.match(
+    /\/view\/photo\/(?:large|raw|small|s_ratio_poster|photo)\/public\/(p\d+\.(?:jpg|jpeg|png|webp))/i
+  );
+  if (matched) {
+    return `https://img3.doubanio.com/view/photo/s_ratio_poster/public/${matched[1]}`;
+  }
+  return url.replace(/^http:\/\//, 'https://');
+}
+
+function pickSearchPoster(
+  targets: DoubanSearchTarget[],
+  query: string
+): string {
+  const key = matchKey(query);
+  const candidates = targets.filter((target) => {
+    const cover = target.cover_url || '';
+    if (isPlaceholderPoster(cover)) return false;
+    const targetKey = matchKey(target.title || '');
+    return targetKey === key || targetKey.startsWith(key);
+  });
+  if (!candidates.length) return '';
+
+  candidates.sort((a, b) => {
+    const exact =
+      Number(matchKey(b.title || '') === key) -
+      Number(matchKey(a.title || '') === key);
+    if (exact) return exact;
+    // 同名系列优先取动画条目，避免匹配到真人剧
+    return (
+      Number((b.card_subtitle || '').includes('动画')) -
+      Number((a.card_subtitle || '').includes('动画'))
+    );
+  });
+  return toStablePosterUrl(candidates[0].cover_url || '');
+}
+
 async function findDoubanPoster(
   query: string,
   deadline: number
 ): Promise<string> {
-  const normalized = normalizeTitle(query);
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const variants = [query];
+  const simplified = simplifyTitle(query);
+  if (simplified && simplified !== query) variants.push(simplified);
+
+  let networkFailed = false;
+  for (const variant of variants) {
     const remaining = deadline - Date.now();
-    if (remaining < 500) break;
+    if (remaining < 800) break;
+    const targets = await requestDoubanSearch(
+      variant,
+      Math.min(4000, remaining)
+    );
+    if (!targets) {
+      networkFailed = true;
+      continue;
+    }
+    const poster = pickSearchPoster(targets, variant);
+    if (poster) return poster;
+  }
+
+  // 搜索接口不可用时，兜底走 subject_suggest 镜像
+  if (!networkFailed) return '';
+  const normalized = matchKey(query);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const left = deadline - Date.now();
+    if (left < 500) break;
     const endpoint =
       DOUBAN_SUGGEST_ENDPOINTS[attempt % DOUBAN_SUGGEST_ENDPOINTS.length];
     const candidates = await requestDoubanSuggest(
       endpoint,
       query,
-      Math.min(2500, remaining)
+      Math.min(2500, left)
     );
-    // 镜像偶发返回空数组，重试一次通常即可拿到结果
     if (!candidates) continue;
     const preferred =
-      candidates.find(
-        (item) => normalizeTitle(item.title || '') === normalized
-      ) ||
+      candidates.find((item) => matchKey(item.title || '') === normalized) ||
       candidates.find((item) =>
-        normalizeTitle(item.title || '').startsWith(normalized)
-      ) ||
-      candidates[0];
-    if (preferred?.img) {
+        matchKey(item.title || '').startsWith(normalized)
+      );
+    if (preferred?.img && !isPlaceholderPoster(preferred.img)) {
       return preferred.img.replace(/^http:\/\//, 'https://');
     }
     if (candidates.length > 0) break;
@@ -405,17 +528,17 @@ async function resolveDoubanPoster(
 }
 
 async function enrichPosters(items: RawShow[]): Promise<void> {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 20000;
   let cursor = 0;
   const worker = async (index: number) => {
-    // 轻微错峰，降低豆瓣镜像限流概率
-    await new Promise((resolve) => setTimeout(resolve, index * 150));
+    // 轻微错峰，降低豆瓣接口限流概率
+    await new Promise((resolve) => setTimeout(resolve, index * 200));
     while (cursor < items.length && Date.now() < deadline) {
       const item = items[cursor++];
       item.poster = await resolveDoubanPoster(item.title, deadline);
     }
   };
-  await Promise.all([0, 1, 2].map((index) => worker(index)));
+  await Promise.all([0, 1].map((index) => worker(index)));
 }
 
 // 腾讯/优酷频道页由前端异步渲染，没有稳定的公开「在更列表」接口，
@@ -426,23 +549,41 @@ const SEED_SHOWS: Array<{
   weekday: number;
   pubTime: string;
   rule: string;
+  poster: string;
 }> = [
-  { platform: 'tencent', title: '仙逆', weekday: 1, pubTime: '10:00', rule: '周一 10:00' },
-  { platform: 'tencent', title: '吞噬星空', weekday: 2, pubTime: '10:00', rule: '周二 10:00' },
-  { platform: 'tencent', title: '遮天', weekday: 3, pubTime: '10:00', rule: '周三 10:00' },
-  { platform: 'tencent', title: '斩神之凡尘神域 第二季', weekday: 4, pubTime: '10:00', rule: '周四 10:00' },
-  { platform: 'tencent', title: '完美世界', weekday: 5, pubTime: '10:00', rule: '周五 10:00' },
-  { platform: 'tencent', title: '诛仙 最终季', weekday: 5, pubTime: '10:00', rule: '周五 10:00' },
-  { platform: 'tencent', title: '斗罗大陆Ⅱ绝世唐门', weekday: 6, pubTime: '10:00', rule: '周六 10:00' },
-  { platform: 'tencent', title: '斗破苍穹 年番', weekday: 7, pubTime: '10:00', rule: '周日 10:00' },
-  { platform: 'youku', title: '一斩苍穹', weekday: 2, pubTime: '10:00', rule: '周二 10:00' },
-  { platform: 'youku', title: '师兄啊师兄', weekday: 3, pubTime: '10:00', rule: '周三更新' },
-  { platform: 'youku', title: '沧元图 第三季', weekday: 5, pubTime: '10:00', rule: '周五更新' },
-  { platform: 'youku', title: '光阴之外 第二季', weekday: 6, pubTime: '10:00', rule: '周六更新' },
+  { platform: 'tencent', title: '仙逆', weekday: 1, pubTime: '10:00', rule: '周一 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2896563963.jpg' },
+  { platform: 'tencent', title: '吞噬星空', weekday: 2, pubTime: '10:00', rule: '周二 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2616542123.jpg' },
+  { platform: 'tencent', title: '遮天', weekday: 3, pubTime: '10:00', rule: '周三 10:00', poster: 'https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2907302975.jpg' },
+  { platform: 'tencent', title: '斩神之凡尘神域 第二季', weekday: 4, pubTime: '10:00', rule: '周四 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2910686126.jpg' },
+  { platform: 'tencent', title: '完美世界', weekday: 5, pubTime: '10:00', rule: '周五 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2912507200.jpg' },
+  { platform: 'tencent', title: '诛仙 最终季', weekday: 5, pubTime: '10:00', rule: '周五 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2924165930.jpg' },
+  { platform: 'tencent', title: '斗罗大陆Ⅱ绝世唐门', weekday: 6, pubTime: '10:00', rule: '周六 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2877604309.jpg' },
+  { platform: 'tencent', title: '斗破苍穹 年番', weekday: 7, pubTime: '10:00', rule: '周日 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2924137391.jpg' },
+  { platform: 'youku', title: '一斩苍穹', weekday: 2, pubTime: '10:00', rule: '周二 10:00', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2936965402.jpg' },
+  { platform: 'youku', title: '师兄啊师兄', weekday: 3, pubTime: '10:00', rule: '周三更新', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2886674611.jpg' },
+  { platform: 'youku', title: '沧元图 第三季', weekday: 5, pubTime: '10:00', rule: '周五更新', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2895307568.jpg' },
+  { platform: 'youku', title: '光阴之外 第二季', weekday: 6, pubTime: '10:00', rule: '周六更新', poster: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2932805103.jpg' },
 ];
 
 let cachedResult: { at: number; list: GuomanItem[] } | null = null;
 const RESULT_CACHE_TTL = 10 * 60 * 1000;
+
+// 豆瓣图床禁止外站直连，统一走站内代理
+function toClientPoster(url: string): string {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.protocol === 'https:' &&
+      /^img\d+\.doubanio\.com$/.test(parsed.hostname)
+    ) {
+      return `/api/guoman/poster?url=${encodeURIComponent(url)}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
 
 export async function getGuomanCalendar(): Promise<GuomanItem[]> {
   if (cachedResult && Date.now() - cachedResult.at < RESULT_CACHE_TTL) {
@@ -474,7 +615,7 @@ export async function getGuomanCalendar(): Promise<GuomanItem[]> {
         seed.title,
         seed.weekday,
         { pubTime: seed.pubTime, latest: '', rule: seed.rule },
-        '',
+        seed.poster,
         ''
       )
     );
@@ -507,8 +648,8 @@ export async function getGuomanCalendar(): Promise<GuomanItem[]> {
   const list: GuomanItem[] = kept.map((item) => ({
     id: `${item.platform}-${encodeURIComponent(normalizeTitle(item.title))}`,
     title: item.title,
-    poster: item.poster || item.cover,
-    cover: item.cover,
+    poster: toClientPoster(item.poster || item.cover),
+    cover: toClientPoster(item.cover),
     platform: PLATFORM_CN[item.platform],
     weekday: item.weekday,
     weekdayLabel: WEEK_CN[item.weekday],
