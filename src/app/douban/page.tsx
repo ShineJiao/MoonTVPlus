@@ -56,7 +56,7 @@ function DoubanPageClient() {
   const [primarySelection, setPrimarySelection] = useState<string>(() => {
     if (type === 'movie') return '热门';
     if (type === 'tv' || type === 'show') return '最近热门';
-    if (type === 'anime') return '动漫';
+    if (type === 'anime') return '国漫';
     return '';
   });
   const [secondarySelection, setSecondarySelection] = useState<string>(() => {
@@ -168,7 +168,7 @@ function DoubanPageClient() {
         setSecondarySelection('show');
         setSelectedWeekday(''); // 清空星期选择
       } else if (type === 'anime') {
-        setPrimarySelection('动漫');
+        setPrimarySelection('国漫');
         setSecondarySelection('全部');
         setSelectedWeekday('');
       } else {
