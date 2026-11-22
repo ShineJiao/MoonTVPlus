@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       `${targetSource.api}?ac=videolist&t=${encodeURIComponent(categoryId)}&pg=${page}`,
       {
         headers: API_CONFIG.search.headers,
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(26000),
       }
     );
 

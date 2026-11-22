@@ -91,7 +91,7 @@ export async function fetchSource(
   options: { directTimeoutMs?: number; relayTimeoutMs?: number } = {}
 ): Promise<Response> {
   const directTimeoutMs = options.directTimeoutMs ?? 3000;
-  const relayTimeoutMs = options.relayTimeoutMs ?? 8000;
+  const relayTimeoutMs = options.relayTimeoutMs ?? 20000;
   const relays = getRelays();
   const host = hostOf(url);
 

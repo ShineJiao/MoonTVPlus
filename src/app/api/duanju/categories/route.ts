@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     const response = await fetchSource(`${targetSource.api}?ac=list`, {
       headers: API_CONFIG.search.headers,
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(26000),
     });
 
     if (!response.ok) {
