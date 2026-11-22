@@ -3,6 +3,7 @@
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
 import { parseJsonLosslessIntegers } from '@/lib/json';
 import { getCachedSearchPage, setCachedSearchPage } from '@/lib/search-cache';
+import { fetchSource } from '@/lib/source-fetch';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
 
@@ -45,7 +46,7 @@ async function searchWithCache(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchSource(url, {
       headers: API_CONFIG.search.headers,
       signal: controller.signal,
     });
@@ -215,7 +216,7 @@ export async function getDetailFromApi(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  const response = await fetch(detailUrl, {
+  const response = await fetchSource(detailUrl, {
     headers: API_CONFIG.detail.headers,
     signal: controller.signal,
   });
@@ -303,7 +304,7 @@ export async function getDetailFromApiV2(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  const response = await fetch(detailUrl, {
+  const response = await fetchSource(detailUrl, {
     headers: API_CONFIG.detail.headers,
     signal: controller.signal,
   });
@@ -387,7 +388,7 @@ async function handleSpecialSourceDetail(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  const response = await fetch(detailUrl, {
+  const response = await fetchSource(detailUrl, {
     headers: API_CONFIG.detail.headers,
     signal: controller.signal,
   });

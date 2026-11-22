@@ -6,6 +6,7 @@ import { getAuthInfoFromCookie } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { API_CONFIG } from '@/lib/config';
 import { parseJsonLosslessIntegers } from '@/lib/json';
+import { fetchSource } from '@/lib/source-fetch';
 
 export const runtime = 'nodejs';
 
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
           const timeoutId = setTimeout(() => controller.abort(), 10000);
 
           try {
-            const response = await fetch(searchUrl, {
+            const response = await fetchSource(searchUrl, {
               headers: API_CONFIG.search.headers,
               signal: controller.signal,
             });

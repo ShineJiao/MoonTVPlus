@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { API_CONFIG, getCacheTime } from '@/lib/config';
 import { getDuanjuSources } from '@/lib/duanju';
 import { parseJsonLosslessIntegers } from '@/lib/json';
+import { fetchSource } from '@/lib/source-fetch';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
 
@@ -41,7 +42,7 @@ interface CmsClassResponse {
 
 // 请求指定分类下的视频列表
 const fetchVideoList = async (api: string, typeId: string | number) => {
-  const response = await fetch(`${api}?ac=videolist&t=${typeId}&pg=1`, {
+  const response = await fetchSource(`${api}?ac=videolist&t=${typeId}&pg=1`, {
     headers: API_CONFIG.search.headers,
   });
   if (!response.ok) return null;
@@ -95,7 +96,7 @@ export async function GET() {
 
     // 获取该视频源的分类列表，找到短剧分类的ID
     const classUrl = `${firstSource.api}?ac=list`;
-    const classResponse = await fetch(classUrl, {
+    const classResponse = await fetchSource(classUrl, {
       headers: API_CONFIG.search.headers,
     });
 

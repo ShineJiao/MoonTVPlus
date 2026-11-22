@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { API_CONFIG, getCacheTime } from '@/lib/config';
 import { getDuanjuSources } from '@/lib/duanju';
 import { parseJsonLosslessIntegers } from '@/lib/json';
+import { fetchSource } from '@/lib/source-fetch';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
 
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = await fetch(
+    const response = await fetchSource(
       `${targetSource.api}?ac=videolist&t=${encodeURIComponent(categoryId)}&pg=${page}`,
       {
         headers: API_CONFIG.search.headers,

@@ -4,6 +4,7 @@ import { API_CONFIG, getAvailableApiSites } from '@/lib/config';
 import { db } from '@/lib/db';
 import { parseJsonLosslessIntegers } from '@/lib/json';
 import { isDuanjuTypeName } from '@/lib/duanju.client';
+import { fetchSource } from '@/lib/source-fetch';
 
 export { isDuanjuTypeName };
 
@@ -56,7 +57,7 @@ export async function getDuanjuSources(): Promise<DuanjuSource[]> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(classUrl, {
+        const response = await fetchSource(classUrl, {
           headers: API_CONFIG.search.headers,
           signal: controller.signal,
         });

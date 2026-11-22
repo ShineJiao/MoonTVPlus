@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { API_CONFIG, getCacheTime, getConfig } from '@/lib/config';
 import { getDuanjuSources, isDuanjuTypeName } from '@/lib/duanju';
 import { parseJsonLosslessIntegers } from '@/lib/json';
+import { fetchSource } from '@/lib/source-fetch';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'nodejs';
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = await fetch(`${targetSource.api}?ac=list`, {
+    const response = await fetchSource(`${targetSource.api}?ac=list`, {
       headers: API_CONFIG.search.headers,
       signal: AbortSignal.timeout(10000),
     });
