@@ -484,9 +484,20 @@ export async function getGuomanCalendar(): Promise<GuomanItem[]> {
   const kept = Array.from(byKey.values()).filter(
     (item) => item.weekday >= 1 && item.weekday <= 7
   );
+  // 展示顺序：周六、周日、周一 … 周五
+  const weekdayOrder: Record<number, number> = {
+    6: 0,
+    7: 1,
+    1: 2,
+    2: 3,
+    3: 4,
+    4: 5,
+    5: 6,
+  };
   kept.sort(
     (a, b) =>
-      a.weekday - b.weekday ||
+      (weekdayOrder[a.weekday] ?? a.weekday) -
+        (weekdayOrder[b.weekday] ?? b.weekday) ||
       a.pubTime.localeCompare(b.pubTime) ||
       a.title.localeCompare(b.title)
   );

@@ -93,17 +93,17 @@ const DoubanSelector: React.FC<DoubanSelectorProps> = ({
 
   // 动漫一级选择器选项
   const animePrimaryOptions: SelectorOption[] = [
+    { label: '国漫', value: '国漫' },
     { label: '动漫', value: '动漫' },
     { label: '番剧', value: '番剧' },
     { label: '剧场版', value: '剧场版' },
-    { label: '国漫', value: '国漫' },
   ];
 
   const animeSelectorOptions: SelectorOption[] = [
+    { label: '国漫', value: '国漫' },
     { label: '动漫', value: '动漫' },
     { label: '番剧', value: '番剧' },
     { label: '剧场版', value: '剧场版' },
-    { label: '国漫', value: '国漫' },
   ];
 
   // 处理多级选择器变化
