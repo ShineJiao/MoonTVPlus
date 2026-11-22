@@ -54,16 +54,11 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
       label: '综艺',
       href: '/douban?type=show',
     },
-    {
-      icon: TvMinimalPlay,
-      label: '电视直播',
-      href: '/live',
-    },
-    {
-      icon: Globe,
-      label: '网络直播',
-      href: '/web-live',
-    },
+      {
+        icon: TvMinimalPlay,
+        label: '电视直播',
+        href: '/live',
+      },
   ]);
 
   useEffect(() => {
@@ -92,11 +87,15 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
         label: '综艺',
         href: '/douban?type=show',
       },
-      {
-        icon: TvMinimalPlay,
-        label: '电视直播',
-        href: '/live',
-      },
+      ...(runtimeConfig?.LIVE_ENABLED
+        ? [
+            {
+              icon: TvMinimalPlay,
+              label: '电视直播',
+              href: '/live',
+            },
+          ]
+        : []),
     ];
 
     // 如果启用网络直播，添加网络直播入口
@@ -142,6 +141,8 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
         href: '/douban?type=custom',
       });
     }
+
+    // 特殊源入口不在导航展示，只能手动访问 /under
 
     setNavItems(items);
   }, [watchRoomContext?.isEnabled]);

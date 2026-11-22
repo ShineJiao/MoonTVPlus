@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
+import { requireFeaturePermission } from '@/lib/permissions';
 import { XiaoyaClient } from '@/lib/xiaoya.client';
 
 export const runtime = 'nodejs';
@@ -14,6 +15,8 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireFeaturePermission(request, 'xiaoya', '无权限访问小雅');
+    if (authResult instanceof NextResponse) return authResult;
     const authInfo = getAuthInfoFromCookie(request);
     if (!authInfo || !authInfo.username) {
       return NextResponse.json({ error: '未授权' }, { status: 401 });
@@ -40,7 +43,18 @@ export async function GET(request: NextRequest) {
       xiaoyaConfig.Token
     );
 
-    const result = await client.listDirectory(path);
+        // 循环翻页获取全部条目（alist 单页上限100，避免大目录被截断）
+    const firstPage = await client.listDirectory(path);
+    const allContent = [...firstPage.content];
+    const total = firstPage.total || allContent.length;
+    let page = 2;
+    while (allContent.length < total && page <= 200) {
+      const next = await client.listDirectory(path, page, 100, false);
+      if (!next.content || next.content.length === 0) break;
+      allContent.push(...next.content);
+      page += 1;
+    }
+    const result = { content: allContent, total };
 
     // 过滤出文件夹和视频文件
     const videoExtensions = ['.mp4', '.mkv', '.avi', '.m3u8', '.flv', '.ts', '.mov', '.wmv', '.webm'];
