@@ -48,13 +48,36 @@ function shouldRetryViaRelay(response: Response): boolean {
   return response.status === 403 || response.status === 429 || response.status >= 500;
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+// 把 undici 的 cause 链拼成一行，便于在运行日志里定位
+function describeError(error: unknown): string {
+  const parts: string[] = [];
+  let current = error as
+    | { name?: string; message?: string; code?: string; cause?: unknown }
+    | undefined;
+  for (let depth = 0; current && depth < 4; depth++) {
+    if (current.code) parts.push(current.code);
+    if (current.message) parts.push(current.message);
+    current = current.cause as typeof current;
+  }
+  return parts.join(' | ') || String(error);
+}
+
 export async function fetchSource(
   url: string,
   init: RequestInit = {},
   options: { directTimeoutMs?: number; relayTimeoutMs?: number } = {}
 ): Promise<Response> {
-  const directTimeoutMs = options.directTimeoutMs ?? 3500;
-  const relayTimeoutMs = options.relayTimeoutMs ?? 5000;
+  const directTimeoutMs = options.directTimeoutMs ?? 3000;
+  const relayTimeoutMs = options.relayTimeoutMs ?? 4500;
+  const host = hostOf(url);
 
   let directResponse: Response | null = null;
   let directError: unknown = null;
@@ -63,16 +86,28 @@ export async function fetchSource(
     if (!shouldRetryViaRelay(directResponse)) {
       return directResponse;
     }
+    console.warn(
+      `[source] 直连返回 ${directResponse.status} host=${host}，尝试中转`
+    );
   } catch (error) {
     directError = error;
+    console.warn(`[source] 直连失败 host=${host} ${describeError(error)}`);
   }
 
   for (const relay of getRelays()) {
     try {
       const response = await timedFetch(`${relay}${url}`, init, relayTimeoutMs);
-      if (response.ok) return response;
-    } catch {
-      // 换下一个中转
+      if (response.ok) {
+        console.info(`[source] 中转成功 host=${host} relay=${hostOf(relay)}`);
+        return response;
+      }
+      console.warn(
+        `[source] 中转返回 ${response.status} host=${host} relay=${hostOf(relay)}`
+      );
+    } catch (error) {
+      console.warn(
+        `[source] 中转失败 host=${host} relay=${hostOf(relay)} ${describeError(error)}`
+      );
     }
   }
 
