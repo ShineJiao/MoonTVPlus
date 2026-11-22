@@ -26,6 +26,55 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 中转并发上限。
+ *
+ * 搜索、源验证会同时发起上百个采集请求，如果全部直连失败后一起压到中转，
+ * 中转会因连接数过多直接超时（部署环境实测 UND_ERR_CONNECT_TIMEOUT）。
+ * 这里对中转 lane 做全局排队，直连不受影响。
+ */
+const MAX_RELAY_CONCURRENCY = 8;
+let relayActive = 0;
+const relayWaiters: Array<() => void> = [];
+
+function releaseRelaySlot(): void {
+  const next = relayWaiters.shift();
+  if (next) {
+    // 槽位直接转交给下一个等待者，active 保持不变
+    next();
+  } else {
+    relayActive = Math.max(0, relayActive - 1);
+  }
+}
+
+function acquireRelaySlot(signal?: AbortSignal | null): Promise<() => void> {
+  if (relayActive < MAX_RELAY_CONCURRENCY) {
+    relayActive += 1;
+    return Promise.resolve(releaseRelaySlot);
+  }
+  return new Promise((resolve, reject) => {
+    const grant = () => {
+      cleanup();
+      resolve(releaseRelaySlot);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException('This operation was aborted', 'AbortError'));
+    };
+    const cleanup = () => {
+      signal?.removeEventListener('abort', onAbort);
+      const index = relayWaiters.indexOf(grant);
+      if (index >= 0) relayWaiters.splice(index, 1);
+    };
+    if (signal?.aborted) {
+      reject(new DOMException('This operation was aborted', 'AbortError'));
+      return;
+    }
+    relayWaiters.push(grant);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function createController(externalSignal?: AbortSignal | null): AbortController {
   const controller = new AbortController();
   if (externalSignal) {
@@ -134,28 +183,37 @@ export async function fetchSource(
       // 每个中转都用独立的控制器，避免上一个超时后连累后续重试
       const controller = createController(init.signal);
       activeRelayController = controller;
+      // 排队 + 请求共用同一个超时预算，避免排队无限等待
+      const deadline = setTimeout(() => controller.abort(), relayTimeoutMs);
       try {
-        const response = await timedFetch(
-          `${relay}${url}`,
-          baseInit,
-          relayTimeoutMs,
-          controller
-        );
-        if (response.ok) {
-          console.info(
-            `[source] 中转成功 host=${host} relay=${hostOf(relay)}`
+        const release = await acquireRelaySlot(controller.signal);
+        try {
+          const response = await timedFetch(
+            `${relay}${url}`,
+            baseInit,
+            relayTimeoutMs,
+            controller
           );
-          return { kind: 'relay' as const, response };
+          if (response.ok) {
+            console.info(
+              `[source] 中转成功 host=${host} relay=${hostOf(relay)}`
+            );
+            return { kind: 'relay' as const, response };
+          }
+          console.warn(
+            `[source] 中转返回 ${response.status} host=${host} relay=${hostOf(relay)}`
+          );
+        } finally {
+          release();
         }
-        console.warn(
-          `[source] 中转返回 ${response.status} host=${host} relay=${hostOf(relay)}`
-        );
       } catch (error) {
         console.warn(
           `[source] 中转失败 host=${host} relay=${hostOf(relay)} ${describeError(
             error
           )}`
         );
+      } finally {
+        clearTimeout(deadline);
       }
     }
     throw new Error('relay failed');

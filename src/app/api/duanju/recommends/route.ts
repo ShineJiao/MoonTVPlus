@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 
+import { parseCmsPlayEpisodes } from '@/lib/cms-play-url';
 import { API_CONFIG, getCacheTime } from '@/lib/config';
 import { getDuanjuSources } from '@/lib/duanju';
 import { parseJsonLosslessIntegers } from '@/lib/json';
@@ -159,34 +160,9 @@ export async function GET() {
 
     // 处理视频数据
     const videos: SearchResult[] = videoList.map((item: ApiSearchItem) => {
-      let episodes: string[] = [];
-      let titles: string[] = [];
-
-      // 使用正则表达式从 vod_play_url 提取 m3u8 链接
-      if (item.vod_play_url) {
-        // 先用 $$$ 分割
-        const vod_play_url_array = item.vod_play_url.split('$$$');
-        // 分集之间#分割，标题和播放链接 $ 分割
-        vod_play_url_array.forEach((url: string) => {
-          const matchEpisodes: string[] = [];
-          const matchTitles: string[] = [];
-          const title_url_array = url.split('#');
-          title_url_array.forEach((title_url: string) => {
-            const episode_title_url = title_url.split('$');
-            if (
-              episode_title_url.length === 2 &&
-              episode_title_url[1].endsWith('.m3u8')
-            ) {
-              matchTitles.push(episode_title_url[0]);
-              matchEpisodes.push(episode_title_url[1]);
-            }
-          });
-          if (matchEpisodes.length > episodes.length) {
-            episodes = matchEpisodes;
-            titles = matchTitles;
-          }
-        });
-      }
+      const { episodes, titles } = item.vod_play_url
+        ? parseCmsPlayEpisodes(item.vod_play_url)
+        : { episodes: [], titles: [] };
 
       return {
         id: item.vod_id.toString(),

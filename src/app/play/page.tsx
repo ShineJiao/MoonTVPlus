@@ -4432,10 +4432,20 @@ function PlayPageClient() {
       } else {
         const isM3u8 = newUrl.toLowerCase().includes('.m3u') || !newUrl.toLowerCase().match(/\.(mp4|flv|webm|mkv|avi|mov)(\?.*)?$/);
 
+        // https 页面无法直接播放 http 媒体（混合内容会被浏览器拦截），
+        // 这类地址统一改走服务端代理，并带上 fallback 绕过源未开启代理模式的限制
+        const isMixedContent =
+          typeof window !== 'undefined' &&
+          window.location.protocol === 'https:' &&
+          /^http:\/\//i.test(newUrl);
+
         if (sourceProxyMode && newUrl && isM3u8) {
           // 如果视频源启用了代理模式,且不是本地下载,则通过代理播放
           newUrl = `/api/proxy/vod/m3u8?url=${encodeURIComponent(newUrl)}&source=${encodeURIComponent(currentSource)}`;
           console.log('使用代理模式播放:', newUrl);
+        } else if (isMixedContent && currentSource !== 'directplay') {
+          newUrl = `/api/proxy/vod/m3u8?url=${encodeURIComponent(newUrl)}&source=${encodeURIComponent(currentSource)}&fallback=1`;
+          console.log('http 媒体在 https 页面下改为代理播放:', newUrl);
         } else if (currentSource === 'directplay' && newUrl && isM3u8) {
           // 直链播放模式：检查 localStorage 是否记录了该域名需要代理
           if (isDirectplayDomainProxied(newUrl)) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
+import { parseCmsPlayEpisodes } from '@/lib/cms-play-url';
 import { API_CONFIG, getAvailableApiSites } from '@/lib/config';
 import { parseJsonLosslessIntegers } from '@/lib/json';
 import { fetchTVBoxSourceSearchPage } from '@/lib/source-search-tvbox.server';
@@ -111,22 +112,9 @@ export async function GET(request: NextRequest) {
 
     // 转换为 SearchResult 格式
     const results: SearchResult[] = searchData.list.map((item) => {
-      const episodes: string[] = [];
-      const episodes_titles: string[] = [];
-
-      // 解析播放信息
-      if (item.vod_play_url && item.vod_play_from) {
-        const playUrls = item.vod_play_url.split('#');
-        playUrls.forEach((episodeStr) => {
-          if (episodeStr.trim()) {
-            const [name, url] = episodeStr.split('$');
-            if (name && url) {
-              episodes.push(url.trim());
-              episodes_titles.push(name.trim());
-            }
-          }
-        });
-      }
+      const { episodes, titles: episodes_titles } = item.vod_play_url
+        ? parseCmsPlayEpisodes(item.vod_play_url)
+        : { episodes: [], titles: [] };
 
       return {
         id: item.vod_id.toString(),
