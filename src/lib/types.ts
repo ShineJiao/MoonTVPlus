@@ -366,6 +366,27 @@ export interface DoubanResult {
   list: DoubanItem[];
 }
 
+// 国漫在更/放送日历数据结构
+export interface GuomanItem {
+  id: string;
+  title: string;
+  poster: string; // 优先使用豆瓣封面
+  cover: string; // 平台原始封面（豆瓣封面缺失时兜底）
+  platform: string; // 平台名称
+  weekday: number; // 1=周一 ... 7=周日
+  weekdayLabel: string;
+  pubTime: string; // 如 11:00
+  latest: string; // 如 更新至162集
+  rule: string;
+  sourceUrl: string;
+}
+
+export interface GuomanResult {
+  code: number;
+  message: string;
+  list: GuomanItem[];
+}
+
 // 跳过片头片尾配置数据结构
 export interface SkipConfig {
   enable: boolean; // 是否启用跳过片头片尾

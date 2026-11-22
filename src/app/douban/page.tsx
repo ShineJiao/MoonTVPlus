@@ -11,17 +11,20 @@ import {
   getDoubanList,
   getDoubanRecommends,
 } from '@/lib/douban.client';
-import { DoubanItem, DoubanResult } from '@/lib/types';
+import { getGuomanCalendar } from '@/lib/guoman.client';
+import { DoubanItem, DoubanResult, GuomanItem } from '@/lib/types';
 
 import DoubanCardSkeleton from '@/components/DoubanCardSkeleton';
 import DoubanCustomSelector from '@/components/DoubanCustomSelector';
 import DoubanSelector from '@/components/DoubanSelector';
+import GuomanCard from '@/components/GuomanCard';
 import PageLayout from '@/components/PageLayout';
 import VideoCard from '@/components/VideoCard';
 
 function DoubanPageClient() {
   const searchParams = useSearchParams();
   const [doubanData, setDoubanData] = useState<DoubanItem[]>([]);
+  const [guomanData, setGuomanData] = useState<GuomanItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -62,6 +65,9 @@ function DoubanPageClient() {
     if (type === 'show') return 'show';
     return '全部';
   });
+
+  // 国漫分类（聚合各平台在更数据，不走豆瓣分类接口）
+  const isGuoman = type === 'anime' && primarySelection === '国漫';
 
   // MultiLevelSelector 状态
   const [multiLevelValues, setMultiLevelValues] = useState<
@@ -268,9 +274,22 @@ function DoubanPageClient() {
       setLoading(true);
       // 确保在加载初始数据时重置页面状态
       setDoubanData([]);
+      setGuomanData([]);
       setCurrentPage(0);
       setHasMore(true);
       setIsLoadingMore(false);
+
+      // 国漫：聚合各平台在更数据，只保留星期明确的条目
+      if (type === 'anime' && primarySelection === '国漫') {
+        const result = await getGuomanCalendar();
+        const currentSnapshot = { ...currentParamsRef.current };
+        if (isSnapshotEqual(requestSnapshot, currentSnapshot)) {
+          setGuomanData(result.list || []);
+          setHasMore(false);
+          setLoading(false);
+        }
+        return;
+      }
 
       let data: DoubanResult;
 
@@ -410,6 +429,12 @@ function DoubanPageClient() {
   // 单独处理 currentPage 变化（加载更多）
   useEffect(() => {
     if (currentPage > 0) {
+      // 国漫为聚合列表，不支持分页
+      if (type === 'anime' && primarySelection === '国漫') {
+        setHasMore(false);
+        return;
+      }
+
       const fetchMoreData = async () => {
         // 创建当前参数的快照
         const requestSnapshot = {
@@ -711,6 +736,9 @@ function DoubanPageClient() {
   };
 
   const getPageDescription = () => {
+    if (isGuoman) {
+      return '国漫在更与放送日历，数据来自各平台公开信息';
+    }
     return '来自豆瓣的精选内容';
   };
 
@@ -772,21 +800,28 @@ function DoubanPageClient() {
                 skeletonData.map((index) => (
                   <DoubanCardSkeleton key={index} />
                 ))
-              : // 显示实际数据
-                doubanData.map((item, index) => (
-                  <div key={`${item.title}-${index}`} className='w-full'>
-                    <VideoCard
-                      from='douban'
-                      title={item.title}
-                      poster={item.poster}
-                      douban_id={Number(item.id)}
-                      rate={item.rate}
-                      year={item.year}
-                      type={type === 'movie' ? 'movie' : ''} // 电影类型严格控制，tv 不控
-                      isAnime={type === 'anime'}
-                    />
-                  </div>
-                ))}
+              : isGuoman
+                ? // 国漫：平台聚合卡片
+                  guomanData.map((item) => (
+                    <div key={item.id} className='w-full'>
+                      <GuomanCard item={item} />
+                    </div>
+                  ))
+                : // 显示实际数据
+                  doubanData.map((item, index) => (
+                    <div key={`${item.title}-${index}`} className='w-full'>
+                      <VideoCard
+                        from='douban'
+                        title={item.title}
+                        poster={item.poster}
+                        douban_id={Number(item.id)}
+                        rate={item.rate}
+                        year={item.year}
+                        type={type === 'movie' ? 'movie' : ''} // 电影类型严格控制，tv 不控
+                        isAnime={type === 'anime'}
+                      />
+                    </div>
+                  ))}
           </div>
 
           {/* 加载更多指示器 */}
@@ -811,14 +846,15 @@ function DoubanPageClient() {
           )}
 
           {/* 没有更多数据提示 */}
-          {!hasMore && doubanData.length > 0 && (
+          {!hasMore && (isGuoman ? guomanData.length > 0 : doubanData.length > 0) && (
             <div className='text-center text-gray-500 py-8'>已加载全部内容</div>
           )}
 
           {/* 空状态 */}
-          {!loading && doubanData.length === 0 && (
-            <div className='text-center text-gray-500 py-8'>暂无相关内容</div>
-          )}
+          {!loading &&
+            (isGuoman ? guomanData.length === 0 : doubanData.length === 0) && (
+              <div className='text-center text-gray-500 py-8'>暂无相关内容</div>
+            )}
         </div>
       </div>
     </PageLayout>

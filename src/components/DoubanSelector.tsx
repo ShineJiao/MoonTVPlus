@@ -96,12 +96,14 @@ const DoubanSelector: React.FC<DoubanSelectorProps> = ({
     { label: '动漫', value: '动漫' },
     { label: '番剧', value: '番剧' },
     { label: '剧场版', value: '剧场版' },
+    { label: '国漫', value: '国漫' },
   ];
 
   const animeSelectorOptions: SelectorOption[] = [
     { label: '动漫', value: '动漫' },
     { label: '番剧', value: '番剧' },
     { label: '剧场版', value: '剧场版' },
+    { label: '国漫', value: '国漫' },
   ];
 
   // 处理多级选择器变化
@@ -475,7 +477,9 @@ const DoubanSelector: React.FC<DoubanSelectorProps> = ({
           </div>
 
           {/* 筛选部分 - 根据一级选择器显示不同内容 */}
-          {(primarySelection || animePrimaryOptions[0].value) !== '动漫' && (
+          {!['动漫', '国漫'].includes(
+            primarySelection || animePrimaryOptions[0].value
+          ) && (
             <div className='flex flex-col sm:flex-row sm:items-center gap-2'>
               <span className='text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 min-w-[48px]'>
                 筛选
