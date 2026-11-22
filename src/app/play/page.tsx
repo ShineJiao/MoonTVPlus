@@ -2429,6 +2429,8 @@ function PlayPageClient() {
   const [corsFailedUrl, setCorsFailedUrl] = useState<string | null>(null);
   // 标记当前视频是否已经尝试过代理（防止 415→直连→失败→代理 的无限循环）
   const proxyAttemptedRef = useRef(false);
+  // 直连播放被源站 403 拒绝时，记录已尝试过代理兜底的地址，避免循环重试
+  const proxyFallbackTriedRef = useRef<Set<string>>(new Set());
   const videoUrlRequestSeqRef = useRef(0);
   const lastVideoRequestKeyRef = useRef<string | null>(null);
 
@@ -7869,9 +7871,35 @@ function PlayPageClient() {
                           }
                         }
 
-                        // 原有的错误处理逻辑
+                        // 原有错误处理逻辑
                         hls.destroy();
                         if (statusCode === 403) {
+                          // 直连被源站防盗链拒绝时，自动改用服务端代理兜底一次
+                          const isProxiedUrl =
+                            url.includes('/api/proxy/vod/m3u8') ||
+                            url.includes('/api/proxy-m3u8');
+                          const sourceKey = currentSourceRef.current;
+                          if (
+                            !isProxiedUrl &&
+                            url.startsWith('http') &&
+                            sourceKey &&
+                            sourceKey !== 'directplay' &&
+                            !proxyFallbackTriedRef.current.has(url)
+                          ) {
+                            proxyFallbackTriedRef.current.add(url);
+                            proxyAttemptedRef.current = true;
+                            const fallbackUrl = `/api/proxy/vod/m3u8?url=${encodeURIComponent(
+                              url
+                            )}&source=${encodeURIComponent(sourceKey)}&fallback=1`;
+                            console.log(
+                              '[HLS错误] 直连 403，自动改用代理兜底:',
+                              fallbackUrl
+                            );
+                            setVideoError(null);
+                            setIsVideoLoading(true);
+                            setVideoUrl(fallbackUrl);
+                            return;
+                          }
                           setVideoError('访问被拒绝 (403)');
                         } else if (statusCode === 404) {
                           setVideoError('视频不存在 (404)');

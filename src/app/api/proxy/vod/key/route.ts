@@ -8,10 +8,19 @@ import { buildProxyStreamHeaders } from '@/lib/server/proxy-headers';
 
 export const runtime = 'nodejs';
 
+function mediaReferer(url: string): string {
+  try {
+    return `${new URL(url).origin}/`;
+  } catch {
+    return url;
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get('url');
   const source = searchParams.get('source');
+  const allowFallback = searchParams.get('fallback') === '1';
 
   if (!url) {
     return NextResponse.json({ error: 'Missing url' }, { status: 400 });
@@ -29,7 +38,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Source not found' }, { status: 404 });
   }
 
-  if (!videoSource.proxyMode) {
+  if (!videoSource.proxyMode && !allowFallback) {
     return NextResponse.json({ error: 'Proxy mode not enabled for this source' }, { status: 403 });
   }
 
@@ -45,7 +54,7 @@ export async function GET(request: Request) {
     const response = await fetch(decodedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': decodedUrl,
+        'Referer': mediaReferer(decodedUrl),
       },
     });
 

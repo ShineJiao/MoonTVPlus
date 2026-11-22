@@ -48,6 +48,7 @@ import {
   Plus,
   Search,
   Send,
+  Server,
   Settings,
   Smartphone,
   Tablet,
@@ -72,6 +73,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
+import { getAdminVideoSources } from '@/lib/admin-video-sources';
 import { AdminConfig, AdminConfigResult, OpenListExtraSource } from '@/lib/admin.types';
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
 import { BookSource } from '@/lib/book.types';
@@ -80,12 +82,14 @@ import {
   FEATURE_PERMISSION_OPTIONS,
 } from '@/lib/feature-permissions';
 import { MAIN_SOURCE_NAME } from '@/lib/openlist-sources';
+import { isTVBoxBridgeSource } from '@/lib/tvbox-bridge.shared';
 
 import AnimeSubscriptionComponent from '@/components/AnimeSubscriptionComponent';
 import CorrectDialog from '@/components/CorrectDialog';
 import DataMigration from '@/components/DataMigration';
 import OpenListPathInput from '@/components/OpenListPathInput';
 import PageLayout from '@/components/PageLayout';
+import TVBoxBridgeAdminComponent from '@/components/TVBoxBridgeAdminComponent';
 
 // 统一按钮样式系统
 const buttonStyles = {
@@ -149,6 +153,13 @@ const buttonStyles = {
 };
 
 const DEFAULT_GROUP_PERMISSIONS = [...ALL_FEATURE_PERMISSION_KEYS];
+
+/** 用户及用户组共用同一份可用视频源列表。 */
+const getPermissionSourceOptions = (config: AdminConfig | null) =>
+  getAdminVideoSources(config).filter(
+    (source) =>
+      !isTVBoxBridgeSource(source.key) || config?.TVBoxBridgeConfig?.Enabled
+  );
 
 /**
  * 备用源列表按索引存展开 / 检测状态，删除某项后需要平移索引，否则状态会错位到别的卡片上。
@@ -468,6 +479,7 @@ interface LiveDataSource {
   disabled?: boolean;
   from: 'config' | 'custom';
   proxyMode?: 'full' | 'm3u8-only' | 'direct'; // 代理模式
+  tvbox?: NonNullable<AdminConfig['LiveConfig']>[number]['tvbox'];
 }
 
 // 自定义分类数据类型
@@ -2334,7 +2346,7 @@ const UserConfig = ({
                     选择可用的采集源：
                   </h4>
                   <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-                    {config?.SourceConfig?.map((source) => (
+                    {getPermissionSourceOptions(config).map((source) => (
                       <label
                         key={source.key}
                         className='flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors'
@@ -2584,7 +2596,7 @@ const UserConfig = ({
                       可用视频源
                     </label>
                     <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
-                      {config?.SourceConfig?.map((source) => (
+                      {getPermissionSourceOptions(config).map((source) => (
                         <label
                           key={source.key}
                           className='flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors'
@@ -2643,10 +2655,9 @@ const UserConfig = ({
                       </button>
                       <button
                         onClick={() => {
-                          const allApis =
-                            config?.SourceConfig?.filter(
-                              (source) => !source.disabled
-                            ).map((s) => s.key) || [];
+                          const allApis = getPermissionSourceOptions(config)
+                            .filter((source) => !source.disabled)
+                            .map((s) => s.key);
                           setNewUserGroup((prev) => ({
                             ...prev,
                             enabledApis: allApis,
@@ -2749,7 +2760,7 @@ const UserConfig = ({
                       可用视频源
                     </label>
                     <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
-                      {config?.SourceConfig?.map((source) => (
+                      {getPermissionSourceOptions(config).map((source) => (
                         <label
                           key={source.key}
                           className='flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors'
@@ -2815,10 +2826,9 @@ const UserConfig = ({
                       </button>
                       <button
                         onClick={() => {
-                          const allApis =
-                            config?.SourceConfig?.filter(
-                              (source) => !source.disabled
-                            ).map((s) => s.key) || [];
+                          const allApis = getPermissionSourceOptions(config)
+                            .filter((source) => !source.disabled)
+                            .map((s) => s.key);
                           setEditingUserGroup((prev) =>
                             prev ? { ...prev, enabledApis: allApis } : null
                           );
@@ -7139,8 +7149,8 @@ const VideoSourceConfig = ({
 
   // 初始化
   useEffect(() => {
-    if (config?.SourceConfig) {
-      setSources(config.SourceConfig);
+    if (config) {
+      setSources(getAdminVideoSources(config));
       // 进入时重置 orderChanged
       setOrderChanged(false);
       // 重置选择状态
@@ -7286,10 +7296,9 @@ const VideoSourceConfig = ({
   };
 
   const handleSaveSpecialSources = async () => {
-    const enabledSourceKeys =
-      config?.SourceConfig?.filter((source) => !source.disabled).map(
-        (source) => source.key
-      ) || [];
+    const enabledSourceKeys = sources
+      .filter((source) => !source.disabled)
+      .map((source) => source.key);
     const selectedSet = new Set(specialSourceDraftApis);
     const selectedAllEnabledSources =
       enabledSourceKeys.length > 0 &&
@@ -7563,14 +7572,17 @@ const VideoSourceConfig = ({
       setValidationResults([]); // 清空之前的结果
       setShowValidationModal(false); // 立即关闭弹窗
 
-      // 初始化所有视频源为检测中状态
-      const initialResults = sources.map((source) => ({
-        key: source.key,
-        name: source.name,
-        status: 'validating' as const,
-        message: '检测中...',
-        resultCount: 0,
-      }));
+      // CMS 有效性检测不走桥接接口。
+      const initialResults = sources
+        .filter((source) => !isTVBoxBridgeSource(source.key))
+        .map((source) => ({
+          key: source.key,
+          name: source.name,
+          status: 'validating' as const,
+          message: '检测中...',
+          resultCount: 0,
+        }));
+
       setValidationResults(initialResults);
 
       try {
@@ -7864,7 +7876,7 @@ const VideoSourceConfig = ({
           className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 max-w-[12rem] truncate'
           title={source.api}
         >
-          {source.api}
+          {isTVBoxBridgeSource(source.key) ? 'TVBox 桥接' : source.api}
         </td>
         <td
           className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 max-w-[8rem] truncate'
@@ -7884,49 +7896,57 @@ const VideoSourceConfig = ({
           </span>
         </td>
         <td className='px-6 py-4 whitespace-nowrap text-center'>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggleProxyMode(source.key);
-            }}
-            disabled={isLoading(`toggleProxyMode_${source.key}`)}
-            className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${
-              source.proxyMode
-                ? 'bg-blue-600 dark:bg-blue-500'
-                : 'bg-gray-200 dark:bg-gray-700'
-            } ${
-              isLoading(`toggleProxyMode_${source.key}`)
-                ? 'opacity-50 cursor-not-allowed'
-                : 'cursor-pointer'
-            }`}
-            title={source.proxyMode ? '代理模式已启用' : '代理模式已禁用'}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                source.proxyMode ? 'translate-x-6' : 'translate-x-1'
+          {isTVBoxBridgeSource(source.key) ? (
+            <span className='text-gray-400'>—</span>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleProxyMode(source.key);
+              }}
+              disabled={isLoading(`toggleProxyMode_${source.key}`)}
+              className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${
+                source.proxyMode
+                  ? 'bg-blue-600 dark:bg-blue-500'
+                  : 'bg-gray-200 dark:bg-gray-700'
+              } ${
+                isLoading(`toggleProxyMode_${source.key}`)
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'cursor-pointer'
               }`}
-            />
-          </button>
+              title={source.proxyMode ? '代理模式已启用' : '代理模式已禁用'}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  source.proxyMode ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          )}
         </td>
         <td className='px-6 py-4 whitespace-nowrap max-w-[1rem]'>
-          {(() => {
-            const status = getValidationStatus(source.key);
-            if (!status) {
+          {isTVBoxBridgeSource(source.key) ? (
+            <span className='text-gray-400'>—</span>
+          ) : (
+            (() => {
+              const status = getValidationStatus(source.key);
+              if (!status) {
+                return (
+                  <span className='px-2 py-1 text-xs rounded-full bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'>
+                    未检测
+                  </span>
+                );
+              }
               return (
-                <span className='px-2 py-1 text-xs rounded-full bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'>
-                  未检测
+                <span
+                  className={`px-2 py-1 text-xs rounded-full ${status.className}`}
+                  title={status.message}
+                >
+                  {status.icon} {status.text}
                 </span>
               );
-            }
-            return (
-              <span
-                className={`px-2 py-1 text-xs rounded-full ${status.className}`}
-                title={status.message}
-              >
-                {status.icon} {status.text}
-              </span>
-            );
-          })()}
+            })()
+          )}
         </td>
         <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2'>
           <button
@@ -8637,7 +8657,7 @@ const VideoSourceConfig = ({
                 </div>
 
                 <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
-                  {config?.SourceConfig?.map((source) => (
+                  {getAdminVideoSources(config).map((source) => (
                     <label
                       key={source.key}
                       className='flex cursor-pointer items-center space-x-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900/50'
@@ -18140,11 +18160,12 @@ const LiveSourceConfig = ({
         }
 
         // 刷新成功后重新获取配置
+        const data = await response.json();
         await refreshConfig();
         showAlert({
           type: 'success',
           title: '刷新成功',
-          message: '直播源已刷新',
+          message: data.message || '直播源已刷新',
           timer: 2000,
         });
       } catch (err) {
@@ -18252,6 +18273,7 @@ const LiveSourceConfig = ({
         </td>
         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100'>
           {liveSource.name}
+          {liveSource.tvbox && <span className='ml-2 text-xs text-blue-600 dark:text-blue-400'>TVBox</span>}
         </td>
         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100'>
           {liveSource.key}
@@ -18327,7 +18349,7 @@ const LiveSourceConfig = ({
           >
             {!liveSource.disabled ? '禁用' : '启用'}
           </button>
-          {liveSource.from !== 'config' && (
+          {!liveSource.tvbox && liveSource.from !== 'config' && (
             <>
               <button
                 onClick={() => setEditingLiveSource(liveSource)}
@@ -18401,11 +18423,18 @@ const LiveSourceConfig = ({
             </button>
           </div>
         </div>
-        <div className='flex items-center justify-between'>
+        <div className='flex flex-wrap items-center justify-between gap-2'>
           <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
             直播源列表
           </h4>
-          <div className='flex items-center space-x-2'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <button
+              onClick={() => withLoading('syncTVBoxLives', () => callLiveSourceApi({ action: 'sync-tvbox' })).catch(() => undefined)}
+              disabled={!config.TVBoxBridgeConfig?.Enabled || isLoading('syncTVBoxLives')}
+              className={`px-3 py-1.5 text-sm ${!config.TVBoxBridgeConfig?.Enabled || isLoading('syncTVBoxLives') ? buttonStyles.disabled : buttonStyles.primary}`}
+            >
+              {isLoading('syncTVBoxLives') ? '读取中...' : '读取 TVBox 直播源'}
+            </button>
             <button
               onClick={handleRefreshLiveSources}
               disabled={isRefreshing || isLoading('refreshLiveSources')}
@@ -19240,6 +19269,7 @@ function AdminPageClient() {
     userConfig: false,
     videoSource: false,
     sourceScriptLab: false,
+    tvboxBridge: false,
     musicConfig: false,
     mediaLibrary: false,
     openListConfig: false,
@@ -19589,6 +19619,17 @@ function AdminPageClient() {
       title: '视频源脚本',
       icon: <Bot size={20} className={navIconClass} />,
       render: () => <VideoSourceScriptLab />,
+    },
+    {
+      key: 'tvboxBridge',
+      title: 'TVBox 桥接',
+      icon: <Server size={20} className={navIconClass} />,
+      render: () => (
+        <TVBoxBridgeAdminComponent
+          config={config}
+          refreshConfig={fetchConfig}
+        />
+      ),
     },
     {
       key: 'musicConfig',
@@ -20057,6 +20098,20 @@ function AdminPageClient() {
               onToggle={() => toggleTab('sourceScriptLab')}
             >
               <VideoSourceScriptLab />
+            </CollapsibleTab>
+
+            <CollapsibleTab
+              title='TVBox 桥接'
+              icon={
+                <Server size={20} className='text-gray-600 dark:text-gray-400' />
+              }
+              isExpanded={expandedTabs.tvboxBridge}
+              onToggle={() => toggleTab('tvboxBridge')}
+            >
+              <TVBoxBridgeAdminComponent
+                config={config}
+                refreshConfig={fetchConfig}
+              />
             </CollapsibleTab>
 
             <CollapsibleTab

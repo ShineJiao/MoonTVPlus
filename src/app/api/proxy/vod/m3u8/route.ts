@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get('url');
   const source = searchParams.get('source'); // 视频源key
+  // 直连播放被源站 403 拒绝时，前端可带 fallback=1 走一次代理兜底
+  const allowFallback = searchParams.get('fallback') === '1';
 
   if (!url) {
     return NextResponse.json({ error: 'Missing url' }, { status: 400 });
@@ -30,7 +32,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Source not found' }, { status: 404 });
   }
 
-  if (!videoSource.proxyMode) {
+  if (!videoSource.proxyMode && !allowFallback) {
     return NextResponse.json({ error: 'Proxy mode not enabled for this source' }, { status: 403 });
   }
 
@@ -52,7 +54,7 @@ export async function GET(request: Request) {
       credentials: 'same-origin',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': decodedUrl,
+        'Referer': mediaReferer(decodedUrl),
       },
     });
 
@@ -72,7 +74,13 @@ export async function GET(request: Request) {
       const baseUrl = getBaseUrl(finalUrl);
 
       // 重写 M3U8 内容
-      const modifiedContent = rewriteM3U8Content(m3u8Content, baseUrl, request, source);
+      const modifiedContent = rewriteM3U8Content(
+        m3u8Content,
+        baseUrl,
+        request,
+        source,
+        allowFallback
+      );
 
       const headers = buildProxyM3u8Headers(contentType || undefined);
       return new Response(modifiedContent, { headers });
@@ -103,7 +111,21 @@ export async function GET(request: Request) {
   }
 }
 
-function rewriteM3U8Content(content: string, baseUrl: string, req: Request, source: string) {
+function mediaReferer(url: string): string {
+  try {
+    return `${new URL(url).origin}/`;
+  } catch {
+    return url;
+  }
+}
+
+function rewriteM3U8Content(
+  content: string,
+  baseUrl: string,
+  req: Request,
+  source: string,
+  allowFallback = false
+) {
   // 从 referer 头提取协议信息
   const referer = req.headers.get('referer');
   let protocol = 'http';
@@ -118,6 +140,7 @@ function rewriteM3U8Content(content: string, baseUrl: string, req: Request, sour
 
   const host = req.headers.get('host');
   const proxyBase = `${protocol}://${host}/api/proxy/vod`;
+  const fallbackQuery = allowFallback ? '&fallback=1' : '';
 
   const lines = content.split('\n');
   const rewrittenLines: string[] = [];
@@ -128,19 +151,19 @@ function rewriteM3U8Content(content: string, baseUrl: string, req: Request, sour
     // 处理 TS 片段 URL 和其他媒体文件
     if (line && !line.startsWith('#')) {
       const resolvedUrl = resolveUrl(baseUrl, line);
-      const proxyUrl = `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}&source=${source}`;
+      const proxyUrl = `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}&source=${source}${fallbackQuery}`;
       rewrittenLines.push(proxyUrl);
       continue;
     }
 
     // 处理 EXT-X-MAP 标签中的 URI
     if (line.startsWith('#EXT-X-MAP:')) {
-      line = rewriteMapUri(line, baseUrl, proxyBase, source);
+      line = rewriteMapUri(line, baseUrl, proxyBase, source, allowFallback);
     }
 
     // 处理 EXT-X-KEY 标签中的 URI
     if (line.startsWith('#EXT-X-KEY:')) {
-      line = rewriteKeyUri(line, baseUrl, proxyBase, source);
+      line = rewriteKeyUri(line, baseUrl, proxyBase, source, allowFallback);
     }
 
     // 处理嵌套的 M3U8 文件 (EXT-X-STREAM-INF)
@@ -152,7 +175,7 @@ function rewriteM3U8Content(content: string, baseUrl: string, req: Request, sour
         const nextLine = lines[i].trim();
         if (nextLine && !nextLine.startsWith('#')) {
           const resolvedUrl = resolveUrl(baseUrl, nextLine);
-          const proxyUrl = `${proxyBase}/m3u8?url=${encodeURIComponent(resolvedUrl)}&source=${source}`;
+          const proxyUrl = `${proxyBase}/m3u8?url=${encodeURIComponent(resolvedUrl)}&source=${source}${fallbackQuery}`;
           rewrittenLines.push(proxyUrl);
         } else {
           rewrittenLines.push(nextLine);
@@ -167,23 +190,37 @@ function rewriteM3U8Content(content: string, baseUrl: string, req: Request, sour
   return rewrittenLines.join('\n');
 }
 
-function rewriteMapUri(line: string, baseUrl: string, proxyBase: string, source: string) {
+function rewriteMapUri(
+  line: string,
+  baseUrl: string,
+  proxyBase: string,
+  source: string,
+  allowFallback = false
+) {
   const uriMatch = line.match(/URI="([^"]+)"/);
   if (uriMatch) {
     const originalUri = uriMatch[1];
     const resolvedUrl = resolveUrl(baseUrl, originalUri);
-    const proxyUrl = `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}&source=${source}`;
+    const fallbackQuery = allowFallback ? '&fallback=1' : '';
+    const proxyUrl = `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}&source=${source}${fallbackQuery}`;
     return line.replace(uriMatch[0], `URI="${proxyUrl}"`);
   }
   return line;
 }
 
-function rewriteKeyUri(line: string, baseUrl: string, proxyBase: string, source: string) {
+function rewriteKeyUri(
+  line: string,
+  baseUrl: string,
+  proxyBase: string,
+  source: string,
+  allowFallback = false
+) {
   const uriMatch = line.match(/URI="([^"]+)"/);
   if (uriMatch) {
     const originalUri = uriMatch[1];
     const resolvedUrl = resolveUrl(baseUrl, originalUri);
-    const proxyUrl = `${proxyBase}/key?url=${encodeURIComponent(resolvedUrl)}&source=${source}`;
+    const fallbackQuery = allowFallback ? '&fallback=1' : '';
+    const proxyUrl = `${proxyBase}/key?url=${encodeURIComponent(resolvedUrl)}&source=${source}${fallbackQuery}`;
     return line.replace(uriMatch[0], `URI="${proxyUrl}"`);
   }
   return line;

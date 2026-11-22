@@ -6,6 +6,8 @@ export interface TVItem {
   year?: string;
   type?: 'movie' | 'tv';
   href?: string;
+  origin?: 'vod' | 'live';
+  isInvalid?: boolean;
 }
 
 

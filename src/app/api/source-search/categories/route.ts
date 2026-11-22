@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { API_CONFIG, getAvailableApiSites, getConfig } from '@/lib/config';
 import { parseJsonLosslessIntegers } from '@/lib/json';
+import { fetchTVBoxSourceSearchPage } from '@/lib/source-search-tvbox.server';
 import { fetchSource } from '@/lib/source-fetch';
+import { isTVBoxBridgeSource } from '@/lib/tvbox-bridge.shared';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'nodejs';
@@ -37,6 +39,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    if (isTVBoxBridgeSource(sourceKey)) {
+      const data = await fetchTVBoxSourceSearchPage({
+        user: authInfo.username,
+        source: sourceKey,
+        specialOnly,
+        mode: 'home',
+        signal: request.signal,
+      });
+      if (!data) {
+        return NextResponse.json(
+          { error: '该 TVBox 源不可用' },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({ categories: data.categories });
+    }
     const config = await getConfig();
     const apiSites = await getAvailableApiSites(authInfo.username, specialOnly);
     const targetSite = apiSites.find((site) => site.key === sourceKey);

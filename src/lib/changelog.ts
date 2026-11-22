@@ -11,6 +11,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "227.1.0",
+    date: "2026-11-22",
+    added: [
+    "<span style='color: #F7BA0B'>【重磅】</span>支持tvbox订阅源",
+    "增加收藏失效检测"
+    ],
+    changed: [
+    "TVBox 桥接支持直播源与视频源统一管理"
+    ],
+    fixed: [
+    "修复收藏源失效后仍可播放的问题"
+    ]
+  },
+  {
     version: "227.0.1",
     date: "2026-10-28",
     added: [
