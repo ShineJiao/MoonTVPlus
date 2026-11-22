@@ -17989,6 +17989,9 @@ const LiveSourceConfig = ({
     useState<LiveDataSource | null>(null);
   const [orderChanged, setOrderChanged] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedLiveSources, setSelectedLiveSources] = useState<Set<string>>(
+    new Set()
+  );
   const [refreshIntervalHours, setRefreshIntervalHours] = useState(12);
   const [newLiveSource, setNewLiveSource] = useState<LiveDataSource>({
     name: '',
@@ -18105,10 +18108,77 @@ const LiveSourceConfig = ({
   };
 
   const handleDelete = (key: string) => {
+    setSelectedLiveSources((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
     withLoading(`deleteLiveSource_${key}`, () =>
       callLiveSourceApi({ action: 'delete', key })
     ).catch(() => {
       console.error('操作失败', 'delete', key);
+    });
+  };
+
+  // 仅自定义直播源可删除：配置文件中的源、TVBox 桥接同步的源只能禁用
+  const deletableLiveSources = liveSources.filter(
+    (source) => !source.tvbox && source.from !== 'config'
+  );
+  const liveSelectAll =
+    deletableLiveSources.length > 0 &&
+    selectedLiveSources.size === deletableLiveSources.length;
+
+  const handleSelectAllLiveSources = (checked: boolean) => {
+    setSelectedLiveSources(
+      checked ? new Set(deletableLiveSources.map((source) => source.key)) : new Set()
+    );
+  };
+
+  const handleSelectLiveSource = (key: string, checked: boolean) => {
+    setSelectedLiveSources((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+
+  const handleBatchDeleteLiveSources = () => {
+    if (selectedLiveSources.size === 0) return;
+    if (
+      !window.confirm(
+        `确定要删除选中的 ${selectedLiveSources.size} 个直播源吗？此操作不可恢复！`
+      )
+    ) {
+      return;
+    }
+    const keys = Array.from(selectedLiveSources);
+    withLoading('batchDeleteLiveSources', async () => {
+      const response = await fetch('/api/admin/live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-batch', keys }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || '批量删除失败');
+      }
+      setSelectedLiveSources(new Set());
+      await refreshConfig();
+      showAlert({
+        type: 'success',
+        title: '批量删除完成',
+        message: `已删除 ${data.deleted || 0} 个直播源${
+          data.skipped ? `，跳过 ${data.skipped} 个不可删除的源` : ''
+        }`,
+        timer: 2500,
+      });
+    }).catch((error) => {
+      showAlert({
+        type: 'error',
+        title: '批量删除失败',
+        message: error instanceof Error ? error.message : '操作失败',
+      });
     });
   };
 
@@ -18271,6 +18341,19 @@ const LiveSourceConfig = ({
         >
           <GripVertical size={16} />
         </td>
+        <td className='w-12 px-2 py-4 text-center'>
+          {!liveSource.tvbox && liveSource.from !== 'config' && (
+            <input
+              type='checkbox'
+              checked={selectedLiveSources.has(liveSource.key)}
+              onChange={(e) =>
+                handleSelectLiveSource(liveSource.key, e.target.checked)
+              }
+              onClick={(e) => e.stopPropagation()}
+              className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+            />
+          )}
+        </td>
         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100'>
           {liveSource.name}
           {liveSource.tvbox && <span className='ml-2 text-xs text-blue-600 dark:text-blue-400'>TVBox</span>}
@@ -18428,13 +18511,26 @@ const LiveSourceConfig = ({
             直播源列表
           </h4>
           <div className='flex flex-wrap items-center gap-2'>
-            <button
-              onClick={() => withLoading('syncTVBoxLives', () => callLiveSourceApi({ action: 'sync-tvbox' })).catch(() => undefined)}
-              disabled={!config.TVBoxBridgeConfig?.Enabled || isLoading('syncTVBoxLives')}
-              className={`px-3 py-1.5 text-sm ${!config.TVBoxBridgeConfig?.Enabled || isLoading('syncTVBoxLives') ? buttonStyles.disabled : buttonStyles.primary}`}
-            >
-              {isLoading('syncTVBoxLives') ? '读取中...' : '读取 TVBox 直播源'}
-            </button>
+            {selectedLiveSources.size > 0 && (
+              <>
+                <span className='text-sm text-gray-600 dark:text-gray-400'>
+                  已选 {selectedLiveSources.size} 个
+                </span>
+                <button
+                  onClick={handleBatchDeleteLiveSources}
+                  disabled={isLoading('batchDeleteLiveSources')}
+                  className={`px-3 py-1.5 text-sm ${
+                    isLoading('batchDeleteLiveSources')
+                      ? buttonStyles.disabled
+                      : buttonStyles.danger
+                  }`}
+                >
+                  {isLoading('batchDeleteLiveSources')
+                    ? '删除中...'
+                    : '批量删除'}
+                </button>
+              </>
+            )}
             <button
               onClick={handleRefreshLiveSources}
               disabled={isRefreshing || isLoading('refreshLiveSources')}
@@ -18662,6 +18758,16 @@ const LiveSourceConfig = ({
                 className='px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'
                 aria-label='排序'
               />
+              <th className='w-12 px-2 py-3 text-center'>
+                <input
+                  type='checkbox'
+                  checked={liveSelectAll}
+                  onChange={(e) => handleSelectAllLiveSources(e.target.checked)}
+                  disabled={deletableLiveSources.length === 0}
+                  title='全选可删除的直播源'
+                  className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+                />
+              </th>
               <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
                 名称
               </th>

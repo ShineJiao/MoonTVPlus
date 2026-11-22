@@ -79,6 +79,31 @@ export async function POST(request: NextRequest) {
         config.LiveConfig.push(liveInfo);
         break;
 
+      case 'delete-batch': {
+        const { keys } = body;
+        if (!Array.isArray(keys)) {
+          return NextResponse.json(
+            { error: '删除数据格式错误' },
+            { status: 400 }
+          );
+        }
+        const keySet = new Set(keys.filter((item) => typeof item === 'string'));
+        let deleted = 0;
+        let skipped = 0;
+        config.LiveConfig = config.LiveConfig.filter((source) => {
+          if (!keySet.has(source.key)) return true;
+          if (source.tvbox || source.from === 'config') {
+            skipped += 1;
+            return true;
+          }
+          deleteCachedLiveChannels(source.key);
+          deleted += 1;
+          return false;
+        });
+        await db.saveAdminConfig(config);
+        return NextResponse.json({ success: true, deleted, skipped });
+      }
+
       case 'delete':
         // 删除直播源
         const deleteIndex = config.LiveConfig.findIndex((l) => l.key === key);
