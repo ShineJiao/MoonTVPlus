@@ -189,8 +189,17 @@ function LivePageClient() {
   // Tab 切换
   const [activeTab, setActiveTab] = useState<'channels' | 'sources'>('channels');
 
-  // 频道列表收起状态
-  const [isChannelListCollapsed, setIsChannelListCollapsed] = useState(false);
+  // 频道列表收起状态：只由用户点击折叠按钮改变，刷新/换源后保持上次选择
+  const [isChannelListCollapsed, setIsChannelListCollapsed] = useState<boolean>(
+    () => {
+      if (typeof window === 'undefined') return false;
+      try {
+        return localStorage.getItem('liveChannelListCollapsed') === 'true';
+      } catch {
+        return false;
+      }
+    }
+  );
 
   // 过滤后的频道列表
   const [filteredChannels, setFilteredChannels] = useState<LiveChannel[]>([]);
@@ -2618,9 +2627,20 @@ function LivePageClient() {
           {/* 折叠控制 - 仅在 lg 及以上屏幕显示 */}
           <div className='hidden lg:flex justify-end'>
             <button
-              onClick={() =>
-                setIsChannelListCollapsed(!isChannelListCollapsed)
-              }
+              onClick={() => {
+                setIsChannelListCollapsed((prev) => {
+                  const next = !prev;
+                  try {
+                    localStorage.setItem(
+                      'liveChannelListCollapsed',
+                      String(next)
+                    );
+                  } catch {
+                    // localStorage 不可用时只影响记忆，不影响当前状态
+                  }
+                  return next;
+                });
+              }}
               className='group relative flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-white/80 hover:bg-white dark:bg-gray-800/80 dark:hover:bg-gray-800 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50 shadow-sm hover:shadow-md transition-all duration-200'
               title={
                 isChannelListCollapsed ? '显示频道列表' : '隐藏频道列表'

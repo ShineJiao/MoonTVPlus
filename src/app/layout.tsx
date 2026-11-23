@@ -387,6 +387,13 @@ export default async function RootLayout({
           content='width=device-width, initial-scale=1.0, viewport-fit=cover'
         />
         <link rel='apple-touch-icon' href='/icons/icon-192x192.png' />
+        {/* 侧边栏折叠状态：在 CSS 生效前先写入 data 属性，
+            避免整页跳转时侧边栏先以展开态闪一下 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('sidebarCollapsed')==='true'){document.documentElement.dataset.sidebarCollapsed='true'}}catch(e){}`,
+          }}
+        />
         {/* 主题CSS */}
         <link rel='stylesheet' href='/api/theme/css' />
         {/* 将配置序列化后直接写入脚本，浏览器端可通过 window.RUNTIME_CONFIG 获取 */}

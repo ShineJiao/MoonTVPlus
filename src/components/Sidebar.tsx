@@ -61,6 +61,24 @@ declare global {
   }
 }
 
+const readInitialCollapsed = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.__sidebarCollapsed === 'boolean') {
+    return window.__sidebarCollapsed;
+  }
+  try {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    if (saved !== null) {
+      const value = JSON.parse(saved) === true;
+      window.__sidebarCollapsed = value;
+      return value;
+    }
+  } catch {
+    // localStorage 不可用时保持默认展开
+  }
+  return false;
+};
+
 const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -69,26 +87,9 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
   if (pathname === '/watch-room/screen') {
     return null;
   }
-  // 若同一次 SPA 会话中已经读取过折叠状态，则直接复用，避免闪烁
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.__sidebarCollapsed === 'boolean'
-    ) {
-      return window.__sidebarCollapsed;
-    }
-    return false; // 默认展开
-  });
-
-  // 首次挂载时读取 localStorage，以便刷新后仍保持上次的折叠状态
-  useLayoutEffect(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    if (saved !== null) {
-      const val = JSON.parse(saved);
-      setIsCollapsed(val);
-      window.__sidebarCollapsed = val;
-    }
-  }, []);
+  // 折叠状态只由用户点击伸缩按钮改变；这里同步读取本地存储，
+  // 保证页面跳转（含整页刷新）后不会先展开再收起
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(readInitialCollapsed);
 
   // 当折叠状态变化时，同步到 <html> data 属性，供首屏 CSS 使用
   useLayoutEffect(() => {
@@ -263,6 +264,7 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
             {/* 顶部 Logo 区域 */}
             <div className='relative h-16'>
               <div
+                data-sidebar-logo
                 className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isCollapsed ? 'opacity-0' : 'opacity-100'
                   }`}
               >
@@ -271,6 +273,9 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                 </div>
               </div>
               <button
+                data-sidebar-toggle
+                aria-label={isCollapsed ? '展开菜单' : '收起菜单'}
+                title={isCollapsed ? '展开菜单' : '收起菜单'}
                 onClick={handleToggle}
                 className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100/50 transition-colors duration-200 z-10 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700/50 ${isCollapsed ? 'left-1/2 -translate-x-1/2' : 'left-2'
                   }`}
@@ -296,7 +301,10 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                   <Home className='h-4 w-4 text-gray-500 group-hover:text-green-600 data-[active=true]:text-green-700 dark:text-gray-400 dark:group-hover:text-green-400 dark:data-[active=true]:text-green-400' />
                 </div>
                 {!isCollapsed && (
-                  <span className='whitespace-nowrap transition-opacity duration-200 opacity-100'>
+                  <span
+                    data-sidebar-label
+                    className='whitespace-nowrap transition-opacity duration-200 opacity-100'
+                  >
                     首页
                   </span>
                 )}
@@ -311,7 +319,10 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                   <Search className='h-4 w-4 text-gray-500 group-hover:text-green-600 data-[active=true]:text-green-700 dark:text-gray-400 dark:group-hover:text-green-400 dark:data-[active=true]:text-green-400' />
                 </div>
                 {!isCollapsed && (
-                  <span className='whitespace-nowrap transition-opacity duration-200 opacity-100'>
+                  <span
+                    data-sidebar-label
+                    className='whitespace-nowrap transition-opacity duration-200 opacity-100'
+                  >
                     搜索
                   </span>
                 )}
@@ -352,7 +363,10 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                         <Icon className='h-4 w-4 text-gray-500 group-hover:text-green-600 data-[active=true]:text-green-700 dark:text-gray-400 dark:group-hover:text-green-400 dark:data-[active=true]:text-green-400' />
                       </div>
                       {!isCollapsed && (
-                        <span className='whitespace-nowrap transition-opacity duration-200 opacity-100'>
+                        <span
+                    data-sidebar-label
+                    className='whitespace-nowrap transition-opacity duration-200 opacity-100'
+                  >
                           {item.label}
                         </span>
                       )}

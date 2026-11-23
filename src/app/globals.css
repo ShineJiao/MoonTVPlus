@@ -1024,6 +1024,23 @@ html[data-loading-style='grid'] .mtv-err-box {
    否则内容会按「含侧边栏的整屏」居中，看起来偏右。右偏移跟随侧边栏展开/收起：
    Sidebar 收起时会在 <html> 上写 data-sidebar-collapsed。移动端无侧边栏，不偏移。 */
 @media (min-width: 768px) {
+  /* 首屏预折叠：layout 里的内联脚本会在 hydration 前写入 data 属性，
+     整页跳转时按上次选择直接渲染成收起态，避免侧边栏先闪开再收起 */
+  html[data-sidebar-collapsed] [data-sidebar] {
+    width: 4rem !important;
+  }
+  html[data-sidebar-collapsed] .sidebar-offset {
+    width: 4rem !important;
+  }
+  html[data-sidebar-collapsed] [data-sidebar] [data-sidebar-logo],
+  html[data-sidebar-collapsed] [data-sidebar] [data-sidebar-label] {
+    display: none !important;
+  }
+  html[data-sidebar-collapsed] [data-sidebar] [data-sidebar-toggle] {
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
   .mtv-load-overlay {
     left: 0;
     right: 16rem; /* 侧边栏展开 = w-64 */
