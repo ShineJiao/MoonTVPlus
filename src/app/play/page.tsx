@@ -472,6 +472,10 @@ function PlayPageClient() {
     const handleFullscreenChange = () => {
       const isFullscreen = !!document.fullscreenElement;
       setIsNativeFullscreen(isFullscreen);
+      // 原生全屏退出后弹层失去挂载点，立即关闭，避免残留在页面上
+      if (!isFullscreen) {
+        setPlayerEpisodePanelOpen(false);
+      }
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -4824,7 +4828,14 @@ function PlayPageClient() {
         // 网页全屏时 Artplayer 会把 $player 挂到 document.body（FULLSCREEN_WEB_IN_BODY 默认开启），
         // 而 destroy 只清空 $container，残留的 $player 会以 z-index:9999 盖住新播放器，
         // 造成 WebKit（iOS/iPad）换集重建后黑屏只有声音。先退出网页全屏移回容器再销毁。
-        restoreWebFullscreenOnReadyRef.current = !!artPlayerRef.current.fullscreenWeb;
+        // 原生全屏（右下角「全屏」）时销毁播放器会被浏览器强制退出全屏，
+        // 且重建后没有用户手势无法再次申请原生全屏，退而恢复网页全屏保持全屏体验。
+        const nativeFullscreenActive =
+          typeof document !== 'undefined' &&
+          !!document.fullscreenElement &&
+          !!artRef.current?.contains(document.fullscreenElement);
+        restoreWebFullscreenOnReadyRef.current =
+          !!artPlayerRef.current.fullscreenWeb || nativeFullscreenActive;
         if (restoreWebFullscreenOnReadyRef.current) {
           try {
             artPlayerRef.current.fullscreenWeb = false;
@@ -8970,16 +8981,45 @@ function PlayPageClient() {
             }
           }
 
-          // 首次进入播放页自动网页全屏（仅执行一次；全屏为 CSS 实现，不依赖用户手势）
+          // 首次进入播放页自动全屏：优先原生全屏（等同右下角「全屏」），
+          // 浏览器因缺少用户手势拒绝时回退网页全屏，保证仍有全屏体验
           if (!autoFullscreenAppliedRef.current && artPlayerRef.current) {
             autoFullscreenAppliedRef.current = true;
             schedulePlayerTimeout(() => {
               if (!artPlayerRef.current) return;
-              try {
-                artPlayerRef.current.fullscreenWeb = true;
-              } catch (err) {
-                console.warn('自动全屏失败:', err);
+              const supportsNativeFullscreen =
+                typeof document !== 'undefined' && !!document.fullscreenEnabled;
+              if (supportsNativeFullscreen) {
+                // 直接对播放器元素申请全屏，并捕获被浏览器拦截（缺少手势）的 Promise
+                const playerEl =
+                  artRef.current?.querySelector<HTMLElement>('.art-video-player');
+                const requestFullscreen =
+                  playerEl?.requestFullscreen?.bind(playerEl) ||
+                  (playerEl as any)?.webkitRequestFullscreen?.bind(playerEl);
+                if (requestFullscreen) {
+                  try {
+                    const result = requestFullscreen();
+                    if (result && typeof result.catch === 'function') {
+                      result.catch((err: unknown) => {
+                        console.warn('自动原生全屏被拦截，回退网页全屏:', err);
+                      });
+                    }
+                  } catch (err) {
+                    console.warn('自动原生全屏失败:', err);
+                  }
+                }
               }
+              // 原生全屏未生效（被手势限制拦截）时回退网页全屏
+              schedulePlayerTimeout(() => {
+                if (!artPlayerRef.current) return;
+                if (typeof document !== 'undefined' && document.fullscreenElement)
+                  return;
+                try {
+                  artPlayerRef.current.fullscreenWeb = true;
+                } catch (err) {
+                  console.warn('自动全屏失败:', err);
+                }
+              }, supportsNativeFullscreen ? 600 : 120);
             }, 120);
           }
 
@@ -10749,6 +10789,13 @@ function PlayPageClient() {
   }
 
 
+  // 「选集」弹层挂载点：原生全屏时浏览器只渲染全屏元素，弹层必须挂进全屏元素内部；
+  // 网页全屏时播放器被移到 body，挂 body 即可
+  const episodePanelHost =
+    playerEpisodePanelOpen && typeof document !== 'undefined'
+      ? (document.fullscreenElement as HTMLElement | null) || document.body
+      : null;
+
   return (
     <PageLayout activePath='/play' hideNavigation={isWebFullscreen}>
       {/* TMDB背景图 */}
@@ -12370,9 +12417,9 @@ function PlayPageClient() {
         />
       )}
 
-      {/* 播放器内「选集」弹层：全屏时点击控制栏「选集」打开，portal 到 body 以盖住网页全屏的播放器 */}
-      {playerEpisodePanelOpen &&
-        typeof document !== 'undefined' &&
+      {/* 播放器内「选集」弹层：全屏时点击控制栏「选集」打开；
+          原生全屏下必须挂到全屏元素内部，否则浏览器只渲染全屏元素、弹层不可见 */}
+      {episodePanelHost &&
         createPortal(
           <div
             className='fixed inset-0 z-[100000] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4'
@@ -12425,7 +12472,7 @@ function PlayPageClient() {
               </div>
             </div>
           </div>,
-          document.body
+          episodePanelHost
         )}
     </PageLayout>
   );
