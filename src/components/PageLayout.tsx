@@ -18,6 +18,7 @@ interface PageLayoutProps {
   hideNavigation?: boolean; // 控制是否隐藏顶部和底部导航栏
   headerActions?: React.ReactNode; // 顶部工具条扩展按钮（渲染在主题切换按钮左侧）
   headerTopActions?: React.ReactNode; // 顶部工具条上方的扩展按钮行
+  inlineHeader?: boolean; // 顶部按钮改为内容上方的独立一行，避免被轮播图等内容遮挡
 }
 
 const PageLayout = ({
@@ -26,6 +27,7 @@ const PageLayout = ({
   hideNavigation = false,
   headerActions,
   headerTopActions,
+  inlineHeader = false,
 }: PageLayoutProps) => {
   const router = useRouter();
   const [backgroundImage, setBackgroundImage] = useState('');
@@ -100,8 +102,8 @@ const PageLayout = ({
               </div>
             )}
 
-            {/* 桌面端顶部按钮 */}
-            {!hideNavigation && (
+            {/* 桌面端顶部按钮（悬浮样式） */}
+            {!hideNavigation && !inlineHeader && (
               <div className='absolute top-2 right-4 z-20 hidden md:flex flex-col items-end gap-2'>
                 {headerTopActions && (
                   <div className='flex items-center gap-2'>
@@ -124,6 +126,15 @@ const PageLayout = ({
                 paddingBottom: 'calc(3.5rem + env(safe-area-inset-bottom))',
               }}
             >
+              {!hideNavigation && inlineHeader && (
+                <div className='hidden md:flex items-center justify-end gap-2 px-4 sm:px-10 pt-2 pb-2'>
+                  {headerTopActions}
+                  {headerActions}
+                  <ThemeToggle />
+                  <UserMenu />
+                  <UpdateNotification />
+                </div>
+              )}
               {children}
             </main>
           </div>

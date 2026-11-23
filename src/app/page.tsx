@@ -851,7 +851,7 @@ function HomeClient() {
       {musicEnabled && (
         <Link href='/music' prefetch={false}>
           <button
-            className={`${buttonClass} text-green-500 hover:text-green-600`}
+            className={`${buttonClass} text-green-600 bg-green-500/10 hover:bg-green-500/20 dark:text-green-400 dark:bg-green-400/10 dark:hover:bg-green-400/20`}
             title='音乐视听'
             aria-label='音乐视听'
           >
@@ -863,7 +863,7 @@ function HomeClient() {
       {mangaEnabled && (
         <Link href='/manga' prefetch={false}>
           <button
-            className={`${buttonClass} text-emerald-500 hover:text-emerald-600`}
+            className={`${buttonClass} text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 dark:text-emerald-400 dark:bg-emerald-400/10 dark:hover:bg-emerald-400/20`}
             title='漫画展馆'
             aria-label='漫画展馆'
           >
@@ -875,7 +875,7 @@ function HomeClient() {
       {booksEnabled && (
         <Link href='/books' prefetch={false}>
           <button
-            className={`${buttonClass} text-amber-500 hover:text-amber-600`}
+            className={`${buttonClass} text-amber-600 bg-amber-500/10 hover:bg-amber-500/20 dark:text-amber-400 dark:bg-amber-400/10 dark:hover:bg-amber-400/20`}
             title='电子书馆'
             aria-label='电子书馆'
           >
@@ -887,7 +887,7 @@ function HomeClient() {
       {aiEnabled && (
         <button
           onClick={() => setShowAIChat(true)}
-          className={`${buttonClass} text-purple-500 hover:text-purple-600`}
+          className={`${buttonClass} text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 dark:text-purple-400 dark:bg-purple-400/10 dark:hover:bg-purple-400/20`}
           title='AI问片'
           aria-label='AI问片'
         >
@@ -897,7 +897,7 @@ function HomeClient() {
     </>
   );
 
-  // 彩色入口放在顶部工具条（直链播放一行）上方
+  // 彩色入口与直链播放、源站寻片、主题切换统一放在顶部同一行
   const headerTopActions =
     musicEnabled || mangaEnabled || booksEnabled || aiEnabled
       ? renderShortcutButtons(
@@ -911,7 +911,7 @@ function HomeClient() {
     <>
       <button
         onClick={handleDirectPlay}
-        className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'
+        className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-sky-600 bg-sky-500/10 hover:bg-sky-500/20 dark:text-sky-400 dark:bg-sky-400/10 dark:hover:bg-sky-400/20 transition-colors'
         title='直链播放'
         aria-label='直链播放'
       >
@@ -920,7 +920,7 @@ function HomeClient() {
       {sourceSearchEnabled && (
         <Link
           href='/source-search'
-          className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'
+          className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-indigo-600 bg-indigo-500/10 hover:bg-indigo-500/20 dark:text-indigo-400 dark:bg-indigo-400/10 dark:hover:bg-indigo-400/20 transition-colors'
           title='源站寻片'
           aria-label='源站寻片'
         >
@@ -931,7 +931,11 @@ function HomeClient() {
   );
 
   return (
-    <PageLayout headerActions={headerActions} headerTopActions={headerTopActions}>
+    <PageLayout
+      headerActions={headerActions}
+      headerTopActions={headerTopActions}
+      inlineHeader
+    >
       <FireworksCanvas />
       <div className='px-2 sm:px-10 pb-4 sm:pb-8 overflow-visible'>
         {/* TMDB 热门轮播图 */}
