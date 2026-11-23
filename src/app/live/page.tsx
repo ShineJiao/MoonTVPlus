@@ -128,6 +128,9 @@ const LIVE_PLAYER_STEPS: LoadingStep[] = [
   { label: '播放', icon: <Play /> },
 ];
 
+/* 频道列表收起状态的模块级缓存：换源等操作导致组件重挂载时保持用户选择 */
+let liveChannelListCollapsedCache = false;
+
 function LivePageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -189,17 +192,21 @@ function LivePageClient() {
   // Tab 切换
   const [activeTab, setActiveTab] = useState<'channels' | 'sources'>('channels');
 
-  // 频道列表收起状态：只由用户点击折叠按钮改变，刷新/换源后保持上次选择
-  const [isChannelListCollapsed, setIsChannelListCollapsed] = useState<boolean>(
-    () => {
-      if (typeof window === 'undefined') return false;
-      try {
-        return localStorage.getItem('liveChannelListCollapsed') === 'true';
-      } catch {
-        return false;
+  // 频道列表收起状态：只在用户点击折叠按钮时改变。
+  // 先取模块级缓存（页面因换源重挂载时不会回到展开），挂载后再读一次本地存储。
+  const [isChannelListCollapsed, setIsChannelListCollapsed] =
+    useState<boolean>(liveChannelListCollapsedCache);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('liveChannelListCollapsed') === 'true') {
+        liveChannelListCollapsedCache = true;
+        setIsChannelListCollapsed(true);
       }
+    } catch {
+      // localStorage 不可用时保持默认展开
     }
-  );
+  }, []);
 
   // 过滤后的频道列表
   const [filteredChannels, setFilteredChannels] = useState<LiveChannel[]>([]);
@@ -573,7 +580,7 @@ function LivePageClient() {
           newSearchParams.set('source', source.key);
           newSearchParams.set('id', selectedChannel.id);
 
-          const newUrl = `?${newSearchParams.toString()}`;
+          const newUrl = `/live?${newSearchParams.toString()}`;
           router.replace(newUrl);
         }
       }
@@ -663,7 +670,7 @@ function LivePageClient() {
       newSearchParams.set('source', source.key);
       newSearchParams.delete('id'); // 清除频道id
 
-      const newUrl = `?${newSearchParams.toString()}`;
+      const newUrl = `/live?${newSearchParams.toString()}`;
       router.replace(newUrl);
     } catch (err) {
       console.error('切换直播源失败:', err);
@@ -725,7 +732,7 @@ function LivePageClient() {
       newSearchParams.set('source', currentSource.key);
       newSearchParams.set('id', channel.id);
 
-      const newUrl = `?${newSearchParams.toString()}`;
+      const newUrl = `/live?${newSearchParams.toString()}`;
       router.replace(newUrl);
     }
 
@@ -2630,6 +2637,7 @@ function LivePageClient() {
               onClick={() => {
                 setIsChannelListCollapsed((prev) => {
                   const next = !prev;
+                  liveChannelListCollapsedCache = next;
                   try {
                     localStorage.setItem(
                       'liveChannelListCollapsed',
