@@ -8967,11 +8967,17 @@ function PlayPageClient() {
           ],
         });
 
-        // 首次进入播放页：播放器 DOM 刚创建就申请原生全屏（等同右下角「全屏」）。
-        // canplay 往往超过浏览器 5 秒手势有效期，等到 ready 再申请会退化为网页全屏。
-        if (!autoFullscreenAppliedRef.current) {
-          autoFullscreenAppliedRef.current = true;
+        // 播放器 DOM 刚创建就申请原生全屏（等同右下角「全屏」）。
+        // 等到 canplay 再申请往往已超出浏览器 5 秒手势有效期，只能退化为网页全屏。
+        // 换集时用户点了选集按钮，同样带有手势，因此每次重建都尝试一次，
+        // 成功则可继续保持原生全屏，失败由下方 ready 逻辑兜底。
+        const isFirstAutoFullscreen = !autoFullscreenAppliedRef.current;
+        autoFullscreenAppliedRef.current = true;
+        if (isFirstAutoFullscreen) {
           autoFullscreenFallbackPendingRef.current = true;
+        }
+        // 首次进入，或换集前处于全屏时，尝试把原生全屏带到新播放器上
+        if (isFirstAutoFullscreen || restoreWebFullscreenOnReadyRef.current) {
           const playerEl =
             artRef.current?.querySelector<HTMLElement>('.art-video-player');
           const requestFullscreen =
@@ -8987,11 +8993,15 @@ function PlayPageClient() {
               const result = requestFullscreen();
               if (result && typeof result.catch === 'function') {
                 result.catch((err: unknown) => {
-                  console.warn('自动原生全屏被拦截，稍后回退网页全屏:', err);
+                  if (isFirstAutoFullscreen) {
+                    console.warn('自动原生全屏被拦截，稍后回退网页全屏:', err);
+                  }
                 });
               }
             } catch (err) {
-              console.warn('自动原生全屏失败:', err);
+              if (isFirstAutoFullscreen) {
+                console.warn('自动原生全屏失败:', err);
+              }
             }
           }
         }
@@ -9020,10 +9030,13 @@ function PlayPageClient() {
           // 换集重建前处于网页全屏则恢复，避免用户换集时被踢出全屏
           if (restoreWebFullscreenOnReadyRef.current && artPlayerRef.current) {
             restoreWebFullscreenOnReadyRef.current = false;
-            try {
-              artPlayerRef.current.fullscreenWeb = true;
-            } catch (err) {
-              console.warn('恢复网页全屏失败:', err);
+            // 新的原生全屏已生效时不要再切网页全屏，二者会互相冲突
+            if (!document.fullscreenElement) {
+              try {
+                artPlayerRef.current.fullscreenWeb = true;
+              } catch (err) {
+                console.warn('恢复网页全屏失败:', err);
+              }
             }
           }
 
