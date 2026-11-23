@@ -226,6 +226,71 @@ const isHlsPlaybackUrl = (url: string) =>
   url.includes('/api/proxy-m3u8') ||
   url.includes('/api/proxy/vod/m3u8');
 
+// 不同内核（Chrome / 老 WebKit / Firefox / 旧 Edge）全屏 API 前缀不同，
+// 统一读取，避免在内核 132 这类环境里因为拿不到元素而误判「不支持全屏」
+const getFullscreenElement = (): HTMLElement | null => {
+  if (typeof document === 'undefined') return null;
+  const doc = document as any;
+  return (
+    doc.fullscreenElement ||
+    doc.webkitFullscreenElement ||
+    doc.webkitCurrentFullScreenElement ||
+    doc.mozFullScreenElement ||
+    doc.msFullscreenElement ||
+    null
+  );
+};
+
+const detectIOSDevice = () => {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if ((window as any).MSStream) return false;
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return (
+    ua.includes('Mac OS X') &&
+    'ontouchend' in document &&
+    !ua.includes('Windows') &&
+    !ua.includes('Linux')
+  );
+};
+
+/**
+ * 申请元素原生全屏（等同播放器右下角「全屏」）。
+ * 不再依赖 document.fullscreenEnabled —— 部分 WebView 该值为 false 但实际仍可全屏。
+ * 返回是否成功发起请求；被浏览器拦截时走 onFail。
+ */
+const requestElementFullscreen = (
+  el: HTMLElement | null | undefined,
+  onFail?: (err: unknown) => void
+) => {
+  if (!el || !el.isConnected) return false;
+  const anyEl = el as any;
+  const request =
+    el.requestFullscreen?.bind(el) ||
+    anyEl.webkitRequestFullscreen?.bind(el) ||
+    anyEl.webkitRequestFullScreen?.bind(el) ||
+    anyEl.mozRequestFullScreen?.bind(el) ||
+    anyEl.msRequestFullscreen?.bind(el);
+  if (!request) {
+    onFail?.(new Error('fullscreen api not supported'));
+    return false;
+  }
+  try {
+    const result = request();
+    if (result && typeof result.catch === 'function') {
+      result.catch((err: unknown) => {
+        console.warn('原生全屏申请失败:', err);
+        onFail?.(err);
+      });
+    }
+    return true;
+  } catch (err) {
+    console.warn('原生全屏申请异常:', err);
+    onFail?.(err);
+    return false;
+  }
+};
+
 const PLAY_SHORTCUT_GROUPS = [
   {
     title: '播放控制',
@@ -470,7 +535,7 @@ function PlayPageClient() {
   // 监听浏览器原生全屏事件
   useEffect(() => {
     const handleFullscreenChange = () => {
-      const isFullscreen = !!document.fullscreenElement;
+      const isFullscreen = !!getFullscreenElement();
       setIsNativeFullscreen(isFullscreen);
       // 原生全屏退出后弹层失去挂载点，立即关闭，避免残留在页面上
       if (!isFullscreen) {
@@ -2525,6 +2590,71 @@ function PlayPageClient() {
   const restoreWebFullscreenOnReadyRef = useRef(false);
   // 首次自动全屏申请原生全屏失败时，等播放器 ready 后回退网页全屏
   const autoFullscreenFallbackPendingRef = useRef(false);
+  // 自动原生全屏被浏览器拦下后，借用户第一次手势再升级为原生全屏（只尝试一次）
+  const nativeFullscreenGestureUpgradeRef = useRef(false);
+
+  // Chromium（含内核 132）要求全屏必须由用户手势触发，页面加载后自动申请会被拒绝。
+  // 这里的兜底：自动申请失败、且已回退网页全屏时，抓住用户第一次点击/按键的手势窗口，
+  // 先退出网页全屏再申请原生全屏，失败则恢复网页全屏。
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    let disposed = false;
+    const cleanup = () => {
+      disposed = true;
+      document.removeEventListener('click', handler, true);
+      document.removeEventListener('keydown', handler, true);
+    };
+
+    function handler(event: Event) {
+      if (disposed || !nativeFullscreenGestureUpgradeRef.current) return;
+      if (getFullscreenElement()) {
+        nativeFullscreenGestureUpgradeRef.current = false;
+        cleanup();
+        return;
+      }
+      const player = artPlayerRef.current;
+      const playerEl =
+        artRef.current?.querySelector<HTMLElement>('.art-video-player');
+      if (!player || !playerEl || detectIOSDevice()) return;
+      // 点击类手势只认播放器区域，避免用户点页面其它位置被突然全屏
+      if (event.type !== 'keydown') {
+        const target = event.target as Node | null;
+        if (!target || !playerEl.contains(target)) return;
+      }
+
+      // 只尝试一次，失败也不再干扰用户后续操作
+      nativeFullscreenGestureUpgradeRef.current = false;
+      cleanup();
+
+      // 网页全屏时播放器被移到 body，先退出让节点回到原容器再申请原生全屏
+      const wasWebFullscreen = !!player.fullscreenWeb;
+      if (wasWebFullscreen) {
+        try {
+          player.fullscreenWeb = false;
+        } catch (err) {
+          console.warn('退出网页全屏失败:', err);
+        }
+      }
+      const restoreWebFullscreen = () => {
+        if (wasWebFullscreen && artPlayerRef.current && !getFullscreenElement()) {
+          try {
+            artPlayerRef.current.fullscreenWeb = true;
+          } catch (err) {
+            console.warn('恢复网页全屏失败:', err);
+          }
+        }
+      };
+      if (!requestElementFullscreen(playerEl, restoreWebFullscreen)) {
+        restoreWebFullscreen();
+      }
+    }
+
+    document.addEventListener('click', handler, true);
+    document.addEventListener('keydown', handler, true);
+
+    return cleanup;
+  }, []);
 
   // iOS PWA 自绘全屏：见 globals.css 的 .ios-pwa-immersive。
   // 容器（artRef 的父级）是 JSX 里的固定节点，跨换集重建不换，所以类名能留着不丢全屏。
@@ -4832,10 +4962,9 @@ function PlayPageClient() {
         // 造成 WebKit（iOS/iPad）换集重建后黑屏只有声音。先退出网页全屏移回容器再销毁。
         // 原生全屏（右下角「全屏」）时销毁播放器会被浏览器强制退出全屏，
         // 且重建后没有用户手势无法再次申请原生全屏，退而恢复网页全屏保持全屏体验。
+        const fullscreenEl = getFullscreenElement();
         const nativeFullscreenActive =
-          typeof document !== 'undefined' &&
-          !!document.fullscreenElement &&
-          !!artRef.current?.contains(document.fullscreenElement);
+          !!fullscreenEl && !!artRef.current?.contains(fullscreenEl);
         restoreWebFullscreenOnReadyRef.current =
           !!artPlayerRef.current.fullscreenWeb || nativeFullscreenActive;
         if (restoreWebFullscreenOnReadyRef.current) {
@@ -8968,42 +9097,26 @@ function PlayPageClient() {
         });
 
         // 播放器 DOM 刚创建就申请原生全屏（等同右下角「全屏」）。
-        // 等到 canplay 再申请往往已超出浏览器 5 秒手势有效期，只能退化为网页全屏。
-        // 换集时用户点了选集按钮，同样带有手势，因此每次重建都尝试一次，
-        // 成功则可继续保持原生全屏，失败由下方 ready 逻辑兜底。
+        // 浏览器要求全屏必须由用户手势触发，这里尽早申请，抢在 5 秒手势有效期结束前；
+        // 失败则由 ready 逻辑回退网页全屏，并在用户第一次操作时再升级为原生全屏。
+        // 换集时用户点了选集按钮，同样带有手势，因此每次重建都尝试一次。
         const isFirstAutoFullscreen = !autoFullscreenAppliedRef.current;
         autoFullscreenAppliedRef.current = true;
         if (isFirstAutoFullscreen) {
           autoFullscreenFallbackPendingRef.current = true;
         }
         // 首次进入，或换集前处于全屏时，尝试把原生全屏带到新播放器上
-        if (isFirstAutoFullscreen || restoreWebFullscreenOnReadyRef.current) {
+        if (
+          (isFirstAutoFullscreen || restoreWebFullscreenOnReadyRef.current) &&
+          !isIOS
+        ) {
           const playerEl =
             artRef.current?.querySelector<HTMLElement>('.art-video-player');
-          const requestFullscreen =
-            playerEl?.requestFullscreen?.bind(playerEl) ||
-            (playerEl as any)?.webkitRequestFullscreen?.bind(playerEl);
-          if (
-            requestFullscreen &&
-            typeof document !== 'undefined' &&
-            !!document.fullscreenEnabled &&
-            !isIOS
-          ) {
-            try {
-              const result = requestFullscreen();
-              if (result && typeof result.catch === 'function') {
-                result.catch((err: unknown) => {
-                  if (isFirstAutoFullscreen) {
-                    console.warn('自动原生全屏被拦截，稍后回退网页全屏:', err);
-                  }
-                });
-              }
-            } catch (err) {
-              if (isFirstAutoFullscreen) {
-                console.warn('自动原生全屏失败:', err);
-              }
+          requestElementFullscreen(playerEl, (err) => {
+            if (isFirstAutoFullscreen) {
+              console.warn('自动原生全屏被拦截，稍后回退网页全屏:', err);
             }
-          }
+          });
         }
 
         // 原生全屏在 loadedmetadata 前生效时 Artplayer 还没接管全屏事件，
@@ -9011,8 +9124,8 @@ function PlayPageClient() {
         artPlayerRef.current.once('video:loadedmetadata', () => {
           const playerEl =
             artRef.current?.querySelector<HTMLElement>('.art-video-player');
-          if (!playerEl || typeof document === 'undefined') return;
-          if (document.fullscreenElement !== playerEl) return;
+          if (!playerEl) return;
+          if (getFullscreenElement() !== playerEl) return;
           playerEl.classList.add('art-fullscreen');
           artPlayerRef.current?.emit('fullscreen', true);
         });
@@ -9031,9 +9144,11 @@ function PlayPageClient() {
           if (restoreWebFullscreenOnReadyRef.current && artPlayerRef.current) {
             restoreWebFullscreenOnReadyRef.current = false;
             // 新的原生全屏已生效时不要再切网页全屏，二者会互相冲突
-            if (!document.fullscreenElement) {
+            if (!getFullscreenElement()) {
               try {
                 artPlayerRef.current.fullscreenWeb = true;
+                // 原生全屏没跟上，等用户下一次手势再升级
+                nativeFullscreenGestureUpgradeRef.current = true;
               } catch (err) {
                 console.warn('恢复网页全屏失败:', err);
               }
@@ -9046,11 +9161,12 @@ function PlayPageClient() {
             autoFullscreenFallbackPendingRef.current = false;
             schedulePlayerTimeout(() => {
               if (!artPlayerRef.current) return;
-              if (typeof document !== 'undefined' && document.fullscreenElement)
-                return;
+              if (getFullscreenElement()) return;
               if (artPlayerRef.current.fullscreenWeb) return;
               try {
                 artPlayerRef.current.fullscreenWeb = true;
+                // 自动原生全屏被拦截，抓住用户第一次手势再升级为原生全屏
+                nativeFullscreenGestureUpgradeRef.current = true;
               } catch (err) {
                 console.warn('自动全屏失败:', err);
               }
@@ -10827,7 +10943,7 @@ function PlayPageClient() {
   // 网页全屏时播放器被移到 body，挂 body 即可
   const episodePanelHost =
     playerEpisodePanelOpen && typeof document !== 'undefined'
-      ? (document.fullscreenElement as HTMLElement | null) || document.body
+      ? getFullscreenElement() || document.body
       : null;
 
   return (
@@ -12456,11 +12572,11 @@ function PlayPageClient() {
       {episodePanelHost &&
         createPortal(
           <div
-            className='fixed inset-0 z-[100000] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4'
+            className='fixed inset-0 z-[100000] bg-black/75 backdrop-blur-sm flex items-center justify-end p-3 sm:p-4'
             onClick={() => setPlayerEpisodePanelOpen(false)}
           >
             <div
-              className='w-full max-w-3xl max-h-[80vh] flex flex-col bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden'
+              className='w-full max-w-md max-h-[80vh] flex flex-col bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden'
               onClick={(e) => e.stopPropagation()}
             >
               <div className='flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0'>
@@ -12475,7 +12591,7 @@ function PlayPageClient() {
                   <X className='w-5 h-5' />
                 </button>
               </div>
-              <div className='overflow-y-auto p-4 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2'>
+              <div className='overflow-y-auto p-4 grid grid-cols-4 sm:grid-cols-5 gap-2'>
                 {Array.from({ length: totalEpisodes }).map((_, idx) => {
                   const rawTitle = detail?.episodes_titles?.[idx];
                   const label = rawTitle ? cleanEpisodeDisplayName(rawTitle) : '';
