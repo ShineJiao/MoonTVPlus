@@ -39,6 +39,44 @@ const bannerHeightClassMap: Record<HomeBannerHeightScale, string> = {
   '2': 'h-[215px] sm:h-[320px] md:h-[425px] lg:h-[535px]',
 };
 
+// 文案尺寸随轮播图高度档位同步缩放，避免图变矮后文字溢出
+const bannerContentClassMap: Record<
+  HomeBannerHeightScale,
+  {
+    container: string;
+    inner: string;
+    title: string;
+    meta: string;
+    play: string;
+    overview: string;
+  }
+> = {
+  '1': {
+    container: 'p-5 md:p-8',
+    inner: 'max-w-2xl space-y-2 md:space-y-3',
+    title: 'text-2xl md:text-4xl',
+    meta: 'text-xs md:text-sm',
+    play: 'px-4 py-2 text-sm',
+    overview: 'text-xs md:text-sm',
+  },
+  '1.5': {
+    container: 'p-8 md:p-12',
+    inner: 'max-w-2xl space-y-4',
+    title: 'text-3xl md:text-5xl',
+    meta: 'text-sm md:text-base',
+    play: 'px-6 py-3 text-base',
+    overview: 'text-sm md:text-base',
+  },
+  '2': {
+    container: 'p-10 md:p-14',
+    inner: 'max-w-2xl space-y-5',
+    title: 'text-4xl md:text-6xl',
+    meta: 'text-base md:text-lg',
+    play: 'px-7 py-3.5 text-lg',
+    overview: 'text-base md:text-lg',
+  },
+};
+
 const getSavedBannerHeightScale = (): HomeBannerHeightScale => {
   if (typeof window === 'undefined') return '1';
 
@@ -73,7 +111,7 @@ export default function BannerCarousel({
   const [bannerHeightScale, setBannerHeightScale] =
     useState<HomeBannerHeightScale>('1'); // 轮播图高度倍率
   const [isMobileView, setIsMobileView] = useState(false);
-  const [mobileTitleFontSize, setMobileTitleFontSize] = useState(30);
+  const [mobileTitleFontSize, setMobileTitleFontSize] = useState(24);
   const videoRef = useRef<HTMLVideoElement>(null); // 视频元素引用
   const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map()); // 所有视频元素的引用
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -171,11 +209,11 @@ export default function BannerCarousel({
 
     if (bannerHeightScale !== '1' || !isMobileView) {
       titleElement.style.fontSize = '';
-      setMobileTitleFontSize(30);
+      setMobileTitleFontSize(24);
       return;
     }
 
-    const maxFontSize = 30;
+    const maxFontSize = 24;
     const minFontSize = 12;
     let nextFontSize = maxFontSize;
 
@@ -501,6 +539,7 @@ export default function BannerCarousel({
   }
 
   const currentItem = items[currentIndex];
+  const contentStyles = bannerContentClassMap[bannerHeightScale];
 
   return (
     <div
@@ -581,11 +620,13 @@ export default function BannerCarousel({
       </div>
 
       {/* 内容信息 */}
-      <div className='absolute inset-0 flex items-end p-8 md:p-12 pointer-events-none'>
-        <div className='max-w-2xl space-y-4'>
+      <div
+        className={`absolute inset-0 flex items-end ${contentStyles.container} pointer-events-none`}
+      >
+        <div className={contentStyles.inner}>
           <h2
             ref={titleRef}
-            className='text-3xl md:text-5xl font-bold text-white drop-shadow-lg'
+            className={`${contentStyles.title} font-bold text-white drop-shadow-lg`}
             style={
               isMobileView && bannerHeightScale === '1'
                 ? { fontSize: `${mobileTitleFontSize}px` }
@@ -595,7 +636,9 @@ export default function BannerCarousel({
             <span ref={titleTextRef}>{currentItem.title}</span>
           </h2>
 
-          <div className='flex items-center gap-2 md:gap-3 text-sm md:text-base text-white/90 flex-wrap'>
+          <div
+            className={`flex items-center gap-2 md:gap-3 ${contentStyles.meta} text-white/90 flex-wrap`}
+          >
             {currentItem.vote_average > 0 && (
               <span className='px-2 py-1 bg-yellow-500 text-black font-semibold rounded'>
                 {currentItem.vote_average.toFixed(1)}
@@ -606,7 +649,7 @@ export default function BannerCarousel({
               ? currentItem.tags.slice(0, 3).map((tag, index) => (
                   <span
                     key={index}
-                    className='px-2 py-1 bg-white/20 backdrop-blur-sm rounded text-sm'
+                    className='px-2 py-1 bg-white/20 backdrop-blur-sm rounded'
                   >
                     {tag}
                   </span>
@@ -618,7 +661,7 @@ export default function BannerCarousel({
                 currentItem.genres.slice(0, 3).map((genre, index) => (
                   <span
                     key={index}
-                    className='px-2 py-1 bg-white/20 backdrop-blur-sm rounded text-sm'
+                    className='px-2 py-1 bg-white/20 backdrop-blur-sm rounded'
                   >
                     {genre}
                   </span>
@@ -627,7 +670,7 @@ export default function BannerCarousel({
                 getGenreNames(currentItem.genre_ids, 3).map((genre) => (
                   <span
                     key={genre}
-                    className='px-2 py-1 bg-white/20 backdrop-blur-sm rounded text-sm'
+                    className='px-2 py-1 bg-white/20 backdrop-blur-sm rounded'
                   >
                     {genre}
                   </span>
@@ -643,14 +686,16 @@ export default function BannerCarousel({
               e.stopPropagation();
               handlePlay(currentItem.title);
             }}
-            className='hidden md:flex items-center gap-2 px-6 py-3 bg-gray-500/30 hover:bg-gray-500/50 backdrop-blur-sm text-white font-semibold rounded-lg transition-all pointer-events-auto'
+            className={`hidden md:flex items-center gap-2 ${contentStyles.play} bg-gray-500/30 hover:bg-gray-500/50 backdrop-blur-sm text-white font-semibold rounded-lg transition-all pointer-events-auto`}
           >
             <Play className='w-5 h-5 fill-white' />
             立即播放
           </button>
 
           {currentItem.overview && (
-            <p className='text-sm md:text-base text-white/80 line-clamp-3 drop-shadow-md'>
+            <p
+              className={`${contentStyles.overview} text-white/80 line-clamp-2 md:line-clamp-3 drop-shadow-md hidden sm:block`}
+            >
               {currentItem.overview}
             </p>
           )}
