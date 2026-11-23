@@ -37,6 +37,54 @@ const MAX_RELAY_CONCURRENCY = 8;
 let relayActive = 0;
 const relayWaiters: Array<() => void> = [];
 
+/**
+ * 直连并发上限。
+ *
+ * 搜索/源验证会一次性发起上百个采集请求，全部直连同时建连会把部署环境的
+ * 出网连接打满，表现为整批 ECONNRESET / ETIMEDOUT（连 TMDB 等无关请求也会
+ * 一起超时）。这里对直连也做全局排队，保持出网连接数在可控范围内。
+ */
+const MAX_DIRECT_CONCURRENCY = 20;
+let directActive = 0;
+const directWaiters: Array<() => void> = [];
+
+function releaseDirectSlot(): void {
+  const next = directWaiters.shift();
+  if (next) {
+    next();
+  } else {
+    directActive = Math.max(0, directActive - 1);
+  }
+}
+
+function acquireDirectSlot(signal?: AbortSignal | null): Promise<() => void> {
+  if (directActive < MAX_DIRECT_CONCURRENCY) {
+    directActive += 1;
+    return Promise.resolve(releaseDirectSlot);
+  }
+  return new Promise((resolve, reject) => {
+    const grant = () => {
+      cleanup();
+      resolve(releaseDirectSlot);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException('This operation was aborted', 'AbortError'));
+    };
+    const cleanup = () => {
+      signal?.removeEventListener('abort', onAbort);
+      const index = directWaiters.indexOf(grant);
+      if (index >= 0) directWaiters.splice(index, 1);
+    };
+    if (signal?.aborted) {
+      reject(new DOMException('This operation was aborted', 'AbortError'));
+      return;
+    }
+    directWaiters.push(grant);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function releaseRelaySlot(): void {
   const next = relayWaiters.shift();
   if (next) {
@@ -155,26 +203,36 @@ export async function fetchSource(
     activeRelayController?.abort();
   };
 
-  const directLane = timedFetch(
-    url,
-    baseInit,
-    directTimeoutMs,
-    directController
-  ).then(
-    (response) => {
-      // 直连返回可用的响应就直接用，不再走中转
-      if (!shouldRetryViaRelay(response)) {
-        return { kind: 'direct' as const, response };
-      }
-      console.warn(`[source] 直连返回 ${response.status} host=${host}，尝试中转`);
-      throw new Error(`HTTP ${response.status}`);
-    },
-    (error) => {
-      directError = error;
-      console.warn(`[source] 直连失败 host=${host} ${describeError(error)}`);
-      throw error;
+  const directLane = (async () => {
+    // 直连同样排队，避免上百个源同时建连打满出网连接
+    const release = await acquireDirectSlot(init.signal);
+    try {
+      return await timedFetch(
+        url,
+        baseInit,
+        directTimeoutMs,
+        directController
+      ).then(
+        (response) => {
+          // 直连返回可用的响应就直接用，不再走中转
+          if (!shouldRetryViaRelay(response)) {
+            return { kind: 'direct' as const, response };
+          }
+          console.warn(
+            `[source] 直连返回 ${response.status} host=${host}，尝试中转`
+          );
+          throw new Error(`HTTP ${response.status}`);
+        },
+        (error) => {
+          directError = error;
+          console.warn(`[source] 直连失败 host=${host} ${describeError(error)}`);
+          throw error;
+        }
+      );
+    } finally {
+      release();
     }
-  );
+  })();
 
   const relayLane = (async () => {
     await delay(RELAY_HEDGE_DELAY_MS);
