@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import { isAnimeCategoryText } from '@/lib/anime-keyword-expr';
 import { createAnime4KRenderer } from '@/lib/anime4k';
@@ -461,6 +462,10 @@ function PlayPageClient() {
   const [isWebFullscreen, setIsWebFullscreen] = useState(false);
   // 原生全屏状态
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  // 播放器内「选集」面板开关
+  const [playerEpisodePanelOpen, setPlayerEpisodePanelOpen] = useState(false);
+  // 首次进入播放页时自动全屏只执行一次（换集重建不会重复触发）
+  const autoFullscreenAppliedRef = useRef(false);
 
   // 监听浏览器原生全屏事件
   useEffect(() => {
@@ -8905,6 +8910,43 @@ function PlayPageClient() {
                 });
               },
             }] : []),
+            // 「选集」按钮：位于内置「显示设置」(index 30) 与「开启画中画」(index 40) 之间，仅全屏时显示
+            {
+              position: 'right',
+              index: 35,
+              html: '<i class="art-icon episode-select-control"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 6h16M4 12h16M4 18h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m15.5 16.5 4 2.5-4 2.5v-5z" fill="currentColor"/></svg></i>',
+              tooltip: '选集',
+              mounted: function ($el: HTMLElement) {
+                $el.classList.add('episode-select-control-wrapper');
+                if (!document.getElementById('episode-select-control-style')) {
+                  const style = document.createElement('style');
+                  style.id = 'episode-select-control-style';
+                  // 仅在网页全屏 / 原生全屏时出现
+                  style.textContent = `
+                    .art-video-player:not(.art-fullscreen):not(.art-fullscreen-web) .episode-select-control-wrapper {
+                      display: none !important;
+                    }
+                  `;
+                  document.head.appendChild(style);
+                }
+              },
+              click: function () {
+                if (playSync.shouldDisableControls) {
+                  if (artPlayerRef.current) {
+                    artPlayerRef.current.notice.show = '房员无法切换集数，请等待房主操作';
+                  }
+                  return;
+                }
+                const episodes = detailRef.current?.episodes || [];
+                if (episodes.length <= 1) {
+                  if (artPlayerRef.current) {
+                    artPlayerRef.current.notice.show = '当前仅有一集';
+                  }
+                  return;
+                }
+                setPlayerEpisodePanelOpen((prev) => !prev);
+              },
+            },
           ],
         });
 
@@ -8926,6 +8968,19 @@ function PlayPageClient() {
             } catch (err) {
               console.warn('恢复网页全屏失败:', err);
             }
+          }
+
+          // 首次进入播放页自动网页全屏（仅执行一次；全屏为 CSS 实现，不依赖用户手势）
+          if (!autoFullscreenAppliedRef.current && artPlayerRef.current) {
+            autoFullscreenAppliedRef.current = true;
+            schedulePlayerTimeout(() => {
+              if (!artPlayerRef.current) return;
+              try {
+                artPlayerRef.current.fullscreenWeb = true;
+              } catch (err) {
+                console.warn('自动全屏失败:', err);
+              }
+            }, 120);
           }
 
           rescueWebkitHlsBootstrap('player-ready');
@@ -9297,6 +9352,9 @@ function PlayPageClient() {
         artPlayerRef.current.on('fullscreenWeb', (isFullscreen: boolean) => {
           console.log('网页全屏状态变化:', isFullscreen);
           setIsWebFullscreen(isFullscreen);
+          if (!isFullscreen) {
+            setPlayerEpisodePanelOpen(false);
+          }
         });
 
         // 添加自定义热力图到播放器控制层
@@ -12311,6 +12369,64 @@ function PlayPageClient() {
           drawerWidth='w-[400px]'
         />
       )}
+
+      {/* 播放器内「选集」弹层：全屏时点击控制栏「选集」打开，portal 到 body 以盖住网页全屏的播放器 */}
+      {playerEpisodePanelOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className='fixed inset-0 z-[100000] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4'
+            onClick={() => setPlayerEpisodePanelOpen(false)}
+          >
+            <div
+              className='w-full max-w-3xl max-h-[80vh] flex flex-col bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden'
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className='flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0'>
+                <span className='text-white font-semibold'>
+                  选集{totalEpisodes > 0 ? `（共 ${totalEpisodes} 集）` : ''}
+                </span>
+                <button
+                  onClick={() => setPlayerEpisodePanelOpen(false)}
+                  className='text-gray-400 hover:text-white transition-colors'
+                  aria-label='关闭选集'
+                >
+                  <X className='w-5 h-5' />
+                </button>
+              </div>
+              <div className='overflow-y-auto p-4 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2'>
+                {Array.from({ length: totalEpisodes }).map((_, idx) => {
+                  const rawTitle = detail?.episodes_titles?.[idx];
+                  const label = rawTitle ? cleanEpisodeDisplayName(rawTitle) : '';
+                  const active = idx === currentEpisodeIndex;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setPlayerEpisodePanelOpen(false);
+                        handleEpisodeChange(idx);
+                      }}
+                      title={rawTitle || `第 ${idx + 1} 集`}
+                      className={`flex flex-col items-center justify-center h-12 px-1 rounded-lg border text-xs transition-colors ${
+                        active
+                          ? 'bg-green-600 border-green-400 text-white'
+                          : 'bg-white/10 border-white/10 text-gray-200 hover:bg-white/20'
+                      }`}
+                    >
+                      <span className='font-semibold'>{idx + 1}</span>
+                      {label ? (
+                        <span className='w-full truncate text-center opacity-70 text-[10px] leading-tight'>
+                          {label}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </PageLayout>
   );
 }

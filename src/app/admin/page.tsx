@@ -9773,7 +9773,23 @@ const CategoryConfig = ({
   );
 };
 
-const VideoSourceScriptLab = () => {
+interface SourceDiscoverResult {
+  site: { url: string; title: string; hostname: string };
+  source: { key: string; name: string; api: string; detail: string };
+  stats: { total: number; pagecount: number };
+  sample: Array<{
+    id: string;
+    name: string;
+    type_name: string;
+    remarks: string;
+  }>;
+}
+
+const VideoSourceScriptLab = ({
+  refreshConfig,
+}: {
+  refreshConfig?: () => Promise<void>;
+}) => {
   const { alertModal, showAlert, hideAlert } = useAlertModal();
   const { isLoading, withLoading } = useLoadingState();
   const [scripts, setScripts] = useState<StandaloneSourceScript[]>([]);
@@ -9802,6 +9818,14 @@ const VideoSourceScriptLab = () => {
   const [testPayload, setTestPayload] = useState(JSON.stringify({}, null, 2));
   const [testOutput, setTestOutput] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 资源获取：填入网站地址 → 探测采集接口 → 生成视频源 → 导入
+  const [discoverUrl, setDiscoverUrl] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState('');
+  const [discoverResult, setDiscoverResult] =
+    useState<SourceDiscoverResult | null>(null);
+  const [discoverImporting, setDiscoverImporting] = useState(false);
 
   const applyEditorFromScript = (script: StandaloneSourceScript | null) => {
     if (!script) {
@@ -10098,6 +10122,73 @@ const VideoSourceScriptLab = () => {
     );
   }, [testHook]);
 
+  const handleDiscoverSource = async () => {
+    const url = discoverUrl.trim();
+    if (!url) {
+      setDiscoverError('请输入视频网站地址');
+      return;
+    }
+
+    setDiscovering(true);
+    setDiscoverError('');
+    setDiscoverResult(null);
+    try {
+      const response = await fetch('/api/admin/source-discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || '资源获取失败');
+      }
+      setDiscoverResult(data as SourceDiscoverResult);
+      showSuccess('已生成视频源，可点击「导入视频源」', showAlert);
+    } catch (error) {
+      setDiscoverError(
+        error instanceof Error ? error.message : '资源获取失败'
+      );
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const handleImportDiscoveredSource = async () => {
+    if (!discoverResult) return;
+    const { source } = discoverResult;
+
+    setDiscoverImporting(true);
+    try {
+      const response = await fetch('/api/admin/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          key: source.key,
+          name: source.name,
+          api: source.api,
+          detail: source.detail || '',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || '导入视频源失败');
+      }
+      showSuccess(`已导入视频源「${source.name}」`, showAlert);
+      setDiscoverResult(null);
+      setDiscoverUrl('');
+      if (refreshConfig) {
+        await refreshConfig();
+      }
+    } catch (error) {
+      setDiscoverError(
+        error instanceof Error ? error.message : '导入视频源失败'
+      );
+    } finally {
+      setDiscoverImporting(false);
+    }
+  };
+
   return (
     <div className='space-y-6'>
       <div className='flex flex-col lg:flex-row gap-6'>
@@ -10208,6 +10299,110 @@ const VideoSourceScriptLab = () => {
                   </div>
                 </button>
               ))
+            )}
+          </div>
+
+          {/* 资源获取：脚本列表下方 */}
+          <div className='rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3'>
+            <div>
+              <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                资源获取
+              </h4>
+              <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
+                填入视频网站地址，自动探测采集接口并生成可用的视频源。
+              </p>
+            </div>
+            <input
+              type='text'
+              value={discoverUrl}
+              onChange={(e) => setDiscoverUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !discovering) {
+                  handleDiscoverSource();
+                }
+              }}
+              placeholder='https://www.freeokk.pro/'
+              className='w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            />
+            <div className='flex items-center gap-2'>
+              <button
+                onClick={handleDiscoverSource}
+                disabled={discovering}
+                className={
+                  discovering
+                    ? buttonStyles.disabledSmall
+                    : buttonStyles.primarySmall
+                }
+              >
+                {discovering ? '获取中...' : '获取资源'}
+              </button>
+              {discoverResult && (
+                <button
+                  onClick={handleImportDiscoveredSource}
+                  disabled={discoverImporting}
+                  className={
+                    discoverImporting
+                      ? buttonStyles.disabledSmall
+                      : buttonStyles.successSmall
+                  }
+                >
+                  {discoverImporting ? '导入中...' : '导入视频源'}
+                </button>
+              )}
+            </div>
+
+            {discoverError && (
+              <div className='text-xs text-red-600 dark:text-red-400 break-all'>
+                {discoverError}
+              </div>
+            )}
+
+            {discoverResult && (
+              <div className='rounded-lg bg-gray-50 dark:bg-gray-800/60 p-3 space-y-2 text-xs text-gray-600 dark:text-gray-300'>
+                <div className='flex items-start justify-between gap-2'>
+                  <span className='text-gray-500 dark:text-gray-400 flex-shrink-0'>
+                    名称
+                  </span>
+                  <span className='font-medium text-right truncate'>
+                    {discoverResult.source.name}
+                  </span>
+                </div>
+                <div className='flex items-start justify-between gap-2'>
+                  <span className='text-gray-500 dark:text-gray-400 flex-shrink-0'>
+                    Key
+                  </span>
+                  <span className='font-mono text-right truncate'>
+                    {discoverResult.source.key}
+                  </span>
+                </div>
+                <div>
+                  <span className='text-gray-500 dark:text-gray-400'>接口</span>
+                  <div className='mt-1 font-mono break-all text-[11px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-2 py-1'>
+                    {discoverResult.source.api}
+                  </div>
+                </div>
+                <div className='flex items-center justify-between gap-2'>
+                  <span className='text-gray-500 dark:text-gray-400'>资源数</span>
+                  <span className='font-medium'>
+                    {discoverResult.stats.total}
+                  </span>
+                </div>
+                {discoverResult.sample.length > 0 && (
+                  <div>
+                    <span className='text-gray-500 dark:text-gray-400'>
+                      示例
+                    </span>
+                    <ul className='mt-1 space-y-0.5'>
+                      {discoverResult.sample.slice(0, 4).map((item) => (
+                        <li key={item.id} className='truncate'>
+                          · {item.name}
+                          {item.remarks ? `（${item.remarks}）` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -19968,7 +20163,7 @@ function AdminPageClient() {
       key: 'sourceScriptLab',
       title: '视频源脚本',
       icon: <Bot size={20} className={navIconClass} />,
-      render: () => <VideoSourceScriptLab />,
+      render: () => <VideoSourceScriptLab refreshConfig={fetchConfig} />,
     },
     {
       key: 'tvboxBridge',
