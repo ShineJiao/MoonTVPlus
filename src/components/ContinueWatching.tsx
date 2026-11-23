@@ -109,17 +109,27 @@ export default function ContinueWatching({ className }: ContinueWatchingProps) {
     <>
       <section className={`mb-8 ${className || ''}`}>
         <div className='mb-4 flex items-center justify-between'>
-          <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+          <h2
+            className={`text-xl font-bold text-gray-800 dark:text-gray-200 transition-colors ${
+              !loading && playRecords.length > 0
+                ? 'cursor-pointer select-none hover:text-red-500 dark:hover:text-red-400'
+                : ''
+            }`}
+            title={
+              !loading && playRecords.length > 0
+                ? '点击清空播放记录'
+                : undefined
+            }
+            onClick={() => {
+              if (!loading && playRecords.length > 0) {
+                setShowConfirmDialog(true);
+              }
+            }}
+          >
             继续观看
           </h2>
           {!loading && playRecords.length > 0 && (
             <div className='flex items-center gap-1'>
-              <button
-                className='text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                onClick={() => setShowConfirmDialog(true)}
-              >
-                清空
-              </button>
               <button
                 className='inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
                 onClick={() => setShowPlayRecordsPanel(true)}

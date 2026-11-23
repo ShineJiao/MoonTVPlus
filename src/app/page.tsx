@@ -845,6 +845,67 @@ function HomeClient() {
     }
   };
 
+  // 音乐/漫画/电子书/AI 彩色入口
+  const renderShortcutButtons = (buttonClass: string, iconSize: number) => (
+    <>
+      {musicEnabled && (
+        <Link href='/music' prefetch={false}>
+          <button
+            className={`${buttonClass} text-green-500 hover:text-green-600`}
+            title='音乐视听'
+            aria-label='音乐视听'
+          >
+            <Music size={iconSize} />
+          </button>
+        </Link>
+      )}
+
+      {mangaEnabled && (
+        <Link href='/manga' prefetch={false}>
+          <button
+            className={`${buttonClass} text-emerald-500 hover:text-emerald-600`}
+            title='漫画展馆'
+            aria-label='漫画展馆'
+          >
+            <BookOpen size={iconSize} />
+          </button>
+        </Link>
+      )}
+
+      {booksEnabled && (
+        <Link href='/books' prefetch={false}>
+          <button
+            className={`${buttonClass} text-amber-500 hover:text-amber-600`}
+            title='电子书馆'
+            aria-label='电子书馆'
+          >
+            <BookMarked size={iconSize} />
+          </button>
+        </Link>
+      )}
+
+      {aiEnabled && (
+        <button
+          onClick={() => setShowAIChat(true)}
+          className={`${buttonClass} text-purple-500 hover:text-purple-600`}
+          title='AI问片'
+          aria-label='AI问片'
+        >
+          <Bot size={iconSize} />
+        </button>
+      )}
+    </>
+  );
+
+  // 彩色入口放在顶部工具条（直链播放一行）上方
+  const headerTopActions =
+    musicEnabled || mangaEnabled || booksEnabled || aiEnabled
+      ? renderShortcutButtons(
+          'w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors',
+          20
+        )
+      : null;
+
   // 顶部工具条按钮：放在主题切换（调色）按钮左侧，样式与其它顶部按钮一致
   const headerActions = (
     <>
@@ -870,81 +931,27 @@ function HomeClient() {
   );
 
   return (
-    <PageLayout headerActions={headerActions}>
+    <PageLayout headerActions={headerActions} headerTopActions={headerTopActions}>
       <FireworksCanvas />
-      {/* TMDB 热门轮播图 */}
-      {homeBannerEnabled && (
-        <div className='w-full mb-4'>
-          <BannerCarousel delayLoad={true} />
-        </div>
-      )}
-
       <div className='px-2 sm:px-10 pb-4 sm:pb-8 overflow-visible'>
-        <div className='max-w-[95%] mx-auto'>
+        {/* TMDB 热门轮播图 */}
+        {homeBannerEnabled && (
+          <div className='w-full mb-4'>
+            <BannerCarousel delayLoad={true} />
+          </div>
+        )}
+
+        <div>
           {/* 首页内容 */}
           <>
-            {/* 音乐/漫画/电子书/AI问片入口（直链播放与源站寻片已移到顶部工具条） */}
+            {/* 移动端音乐/漫画/电子书/AI问片入口（桌面端已移到顶部工具条上方） */}
             {musicEnabled || mangaEnabled || booksEnabled || aiEnabled ? (
             <div
-              className={`flex items-center justify-end gap-2 mb-4 ${
+              className={`flex items-center gap-2 mb-4 md:hidden ${
                 homeBannerEnabled ? '' : 'mt-[30px]'
               }`}
             >
-              {musicEnabled && (
-                <Link href='/music' prefetch={false}>
-                  <button
-                    className='p-1.5 rounded-lg text-green-500 hover:text-green-600 transition-colors'
-                    title='音乐视听'
-                  >
-                    <Music size={18} />
-                  </button>
-                </Link>
-              )}
-
-              {mangaEnabled && (
-                <Link href='/manga' prefetch={false}>
-                  <button
-                    className='p-1.5 rounded-lg text-emerald-500 hover:text-emerald-600 transition-colors'
-                    title='漫画展馆'
-                  >
-                    <BookOpen size={18} />
-                  </button>
-                </Link>
-              )}
-
-              {booksEnabled && (
-                <Link href='/books' prefetch={false}>
-                  <button
-                    className='p-1.5 rounded-lg text-amber-500 hover:text-amber-600 transition-colors'
-                    title='电子书馆'
-                  >
-                    <BookMarked size={18} />
-                  </button>
-                </Link>
-              )}
-
-              {/* 源站寻片入口 */}
-              {sourceSearchEnabled && (
-                <Link href='/source-search'>
-                  <button
-                    className='p-2 rounded-lg text-blue-500 hover:text-blue-600 transition-colors'
-                    title='源站寻片'
-                  >
-                    <ListVideo size={20} />
-                  </button>
-                </Link>
-              )}
-
-              {/* AI问片入口 */}
-              {aiEnabled && (
-                <button
-                  onClick={() => setShowAIChat(true)}
-                  className='p-2 rounded-lg text-purple-500 hover:text-purple-600 transition-colors'
-                  title='AI问片'
-                >
-                  <Bot size={20} />
-                </button>
-              )}
+              {renderShortcutButtons('p-1.5 rounded-lg transition-colors', 18)}
             </div>
             ) : null}
 

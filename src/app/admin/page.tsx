@@ -14809,7 +14809,7 @@ const SuwayomiConfigComponent = ({
   const [sourceIds, setSourceIds] = useState('');
   const [maxSources, setMaxSources] = useState(10);
   const [showMangaDisclaimer, setShowMangaDisclaimer] = useState(false);
-  const [mangaCountdown, setMangaCountdown] = useState(10);
+  const [mangaCountdown, setMangaCountdown] = useState(0);
 
   useEffect(() => {
     if (config?.SuwayomiConfig) {
@@ -14942,7 +14942,7 @@ const SuwayomiConfigComponent = ({
             onClick={() => {
               if (!enabled) {
                 setShowMangaDisclaimer(true);
-                setMangaCountdown(10);
+                setMangaCountdown(0);
               } else {
                 setEnabled(false);
               }
@@ -14985,7 +14985,7 @@ const SuwayomiConfigComponent = ({
                     <button
                       onClick={() => {
                         setShowMangaDisclaimer(false);
-                        setMangaCountdown(10);
+                        setMangaCountdown(0);
                       }}
                       className={buttonStyles.secondary}
                     >
@@ -14995,7 +14995,7 @@ const SuwayomiConfigComponent = ({
                       onClick={() => {
                         setEnabled(true);
                         setShowMangaDisclaimer(false);
-                        setMangaCountdown(10);
+                        setMangaCountdown(0);
                       }}
                       disabled={mangaCountdown > 0}
                       className={
@@ -15184,7 +15184,7 @@ const OPDSConfigComponent = ({
     NonNullable<AdminConfig['OPDSConfig']>['LegadoSubscriptions']
   >([]);
   const [showBooksDisclaimer, setShowBooksDisclaimer] = useState(false);
-  const [booksCountdown, setBooksCountdown] = useState(10);
+  const [booksCountdown, setBooksCountdown] = useState(0);
 
   useEffect(() => {
     if (!config?.OPDSConfig) return;
@@ -15445,7 +15445,7 @@ const OPDSConfigComponent = ({
           onClick={() => {
             if (!enabled) {
               setShowBooksDisclaimer(true);
-              setBooksCountdown(10);
+              setBooksCountdown(0);
             } else {
               setEnabled(false);
             }
@@ -15488,7 +15488,7 @@ const OPDSConfigComponent = ({
                   <button
                     onClick={() => {
                       setShowBooksDisclaimer(false);
-                      setBooksCountdown(10);
+                      setBooksCountdown(0);
                     }}
                     className={buttonStyles.secondary}
                   >
@@ -15498,7 +15498,7 @@ const OPDSConfigComponent = ({
                     onClick={() => {
                       setEnabled(true);
                       setShowBooksDisclaimer(false);
-                      setBooksCountdown(10);
+                      setBooksCountdown(0);
                     }}
                     disabled={booksCountdown > 0}
                     className={
@@ -17954,7 +17954,7 @@ const MusicConfigComponent = ({
   const [token, setToken] = useState('');
   const [proxyEnabled, setProxyEnabled] = useState(true);
   const [showMusicDisclaimer, setShowMusicDisclaimer] = useState(false);
-  const [musicCountdown, setMusicCountdown] = useState(10);
+  const [musicCountdown, setMusicCountdown] = useState(0);
 
   useEffect(() => {
     if (config?.MusicConfig) {
@@ -18069,7 +18069,7 @@ const MusicConfigComponent = ({
             onChange={(e) => {
               if (e.target.checked) {
                 setShowMusicDisclaimer(true);
-                setMusicCountdown(10);
+                setMusicCountdown(0);
               } else {
                 setEnabled(false);
               }
@@ -18106,7 +18106,7 @@ const MusicConfigComponent = ({
                   <button
                     onClick={() => {
                       setShowMusicDisclaimer(false);
-                      setMusicCountdown(10);
+                      setMusicCountdown(0);
                     }}
                     className={buttonStyles.secondary}
                   >
@@ -18116,7 +18116,7 @@ const MusicConfigComponent = ({
                     onClick={() => {
                       setEnabled(true);
                       setShowMusicDisclaimer(false);
-                      setMusicCountdown(10);
+                      setMusicCountdown(0);
                     }}
                     disabled={musicCountdown > 0}
                     className={
@@ -19112,7 +19112,7 @@ const WebLiveConfig = ({
     roomId: '',
   });
   const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
-  const [countdown, setCountdown] = useState(10);
+  const [countdown, setCountdown] = useState(0);
   const [isEnabling, setIsEnabling] = useState(false);
 
   useEffect(() => {
@@ -19195,7 +19195,7 @@ const WebLiveConfig = ({
 
     if (!currentEnabled) {
       setShowDisclaimerModal(true);
-      setCountdown(10);
+      setCountdown(0);
     } else {
       await withLoading('toggleWebLiveEnabled', async () => {
         await callApi({ action: 'toggleEnabled', enabled: false });
@@ -19208,7 +19208,7 @@ const WebLiveConfig = ({
     try {
       await callApi({ action: 'toggleEnabled', enabled: true });
       setShowDisclaimerModal(false);
-      setCountdown(10);
+      setCountdown(0);
     } catch (err) {
       // Error already handled by callApi
     } finally {
@@ -19289,7 +19289,7 @@ const WebLiveConfig = ({
                   <button
                     onClick={() => {
                       setShowDisclaimerModal(false);
-                      setCountdown(10);
+                      setCountdown(0);
                     }}
                     className={buttonStyles.secondary}
                     disabled={isEnabling}

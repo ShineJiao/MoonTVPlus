@@ -34,9 +34,9 @@ interface BannerCarouselProps {
 type HomeBannerHeightScale = '1' | '1.5' | '2';
 
 const bannerHeightClassMap: Record<HomeBannerHeightScale, string> = {
-  '1': 'h-[200px] sm:h-[300px] md:h-[400px] lg:h-[500px]',
-  '1.5': 'h-[300px] sm:h-[450px] md:h-[600px] lg:h-[750px]',
-  '2': 'h-[400px] sm:h-[600px] md:h-[800px] lg:h-[1000px]',
+  '1': 'h-[160px] sm:h-[240px] md:h-[320px] lg:h-[400px]',
+  '1.5': 'h-[240px] sm:h-[360px] md:h-[480px] lg:h-[600px]',
+  '2': 'h-[320px] sm:h-[480px] md:h-[640px] lg:h-[800px]',
 };
 
 const getSavedBannerHeightScale = (): HomeBannerHeightScale => {
