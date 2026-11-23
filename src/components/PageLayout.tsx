@@ -16,9 +16,15 @@ interface PageLayoutProps {
   children: React.ReactNode;
   activePath?: string;
   hideNavigation?: boolean; // 控制是否隐藏顶部和底部导航栏
+  headerActions?: React.ReactNode; // 顶部工具条扩展按钮（渲染在主题切换按钮左侧）
 }
 
-const PageLayout = ({ children, activePath = '/', hideNavigation = false }: PageLayoutProps) => {
+const PageLayout = ({
+  children,
+  activePath = '/',
+  hideNavigation = false,
+  headerActions,
+}: PageLayoutProps) => {
   const router = useRouter();
   const [backgroundImage, setBackgroundImage] = useState('');
   const shouldShowSharedBackground = !hideNavigation && activePath !== '/play';
@@ -75,7 +81,10 @@ const PageLayout = ({ children, activePath = '/', hideNavigation = false }: Page
 
         {/* 移动端头部 */}
         {!hideNavigation && (
-          <MobileHeader showBackButton={['/play', '/live'].includes(activePath)} />
+          <MobileHeader
+            showBackButton={['/play', '/live'].includes(activePath)}
+            headerActions={headerActions}
+          />
         )}
 
         {/* 主要布局容器 */}
@@ -92,6 +101,7 @@ const PageLayout = ({ children, activePath = '/', hideNavigation = false }: Page
             {/* 桌面端顶部按钮 */}
             {!hideNavigation && (
               <div className='absolute top-2 right-4 z-20 hidden md:flex items-center gap-2'>
+                {headerActions}
                 <ThemeToggle />
                 <UserMenu />
                 <UpdateNotification />

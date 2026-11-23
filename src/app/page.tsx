@@ -12,21 +12,19 @@ import {
   Music,
 } from 'lucide-react';
 import Link from 'next/link';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 
-import {
-  BangumiCalendarData,
-  GetBangumiCalendarData,
-} from '@/lib/bangumi.client';
 import { getDoubanCategories } from '@/lib/douban.client';
+import { getGuomanCalendar } from '@/lib/guoman.client';
 import { getTMDBImageUrl, TMDBItem } from '@/lib/tmdb.client';
-import { DoubanItem } from '@/lib/types';
+import { DoubanItem, GuomanItem } from '@/lib/types';
 import { base58Encode, processImageUrl } from '@/lib/utils';
 
 import AIChatPanel from '@/components/AIChatPanel';
 import BannerCarousel from '@/components/BannerCarousel';
 import ContinueWatching from '@/components/ContinueWatching';
 import FireworksCanvas from '@/components/FireworksCanvas';
+import GuomanCard from '@/components/GuomanCard';
 import HttpWarningDialog from '@/components/HttpWarningDialog';
 import PageLayout from '@/components/PageLayout';
 import ScrollableRow from '@/components/ScrollableRow';
@@ -49,9 +47,7 @@ function HomeClient() {
   const [hotVarietyShows, setHotVarietyShows] = useState<DoubanItem[]>([]);
   const [hotDuanju, setHotDuanju] = useState<any[]>([]);
   const [upcomingContent, setUpcomingContent] = useState<TMDBItem[]>([]);
-  const [bangumiCalendarData, setBangumiCalendarData] = useState<
-    BangumiCalendarData[]
-  >([]);
+  const [guomanData, setGuomanData] = useState<GuomanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const { announcement, announcementDisplayMode } = useSite();
   // 首页模块配置状态
@@ -411,14 +407,14 @@ function HomeClient() {
     const moviesCache = getCache('homepage_movies');
     const tvShowsCache = getCache('homepage_tvshows');
     const varietyCache = getCache('homepage_variety');
-    const bangumiCache = getCache('homepage_bangumi');
+    const guomanCache = getCache('homepage_guoman');
     const duanjuCache = getCache('homepage_duanju');
     const upcomingCache = getCache('homepage_upcoming');
 
     if (moviesCache?.data) setHotMovies(moviesCache.data);
     if (tvShowsCache?.data) setHotTvShows(tvShowsCache.data);
     if (varietyCache?.data) setHotVarietyShows(varietyCache.data);
-    if (bangumiCache?.data) setBangumiCalendarData(bangumiCache.data);
+    if (guomanCache?.data) setGuomanData(guomanCache.data);
     if (duanjuCache?.data) setHotDuanju(duanjuCache.data);
     if (upcomingCache?.data) setUpcomingContent(upcomingCache.data);
 
@@ -426,7 +422,7 @@ function HomeClient() {
       moviesCache ||
       tvShowsCache ||
       varietyCache ||
-      bangumiCache ||
+      guomanCache ||
       duanjuCache ||
       upcomingCache;
     if (hasCache) setLoading(false);
@@ -438,8 +434,8 @@ function HomeClient() {
       tvShowsCache.expired ||
       !varietyCache ||
       varietyCache.expired ||
-      !bangumiCache ||
-      bangumiCache.expired ||
+      !guomanCache ||
+      guomanCache.expired ||
       !duanjuCache ||
       duanjuCache.expired ||
       !upcomingCache ||
@@ -452,7 +448,7 @@ function HomeClient() {
             moviesData,
             tvShowsData,
             varietyShowsData,
-            bangumiCalendarData,
+            guomanResult,
           ] = await Promise.all([
             getDoubanCategories({
               kind: 'movie',
@@ -478,9 +474,9 @@ function HomeClient() {
               console.error('获取热门综艺数据失败:', error);
               return null;
             }),
-            GetBangumiCalendarData().catch((error) => {
-              console.error('获取新番放送数据失败:', error);
-              return [];
+            getGuomanCalendar().catch((error) => {
+              console.error('获取国漫新番数据失败:', error);
+              return null;
             }),
           ]);
 
@@ -502,9 +498,11 @@ function HomeClient() {
               setCache('homepage_variety', varietyShowsData.list);
             }
           }
-          setBangumiCalendarData(bangumiCalendarData);
-          if (bangumiCalendarData && bangumiCalendarData.length > 0) {
-            setCache('homepage_bangumi', bangumiCalendarData);
+          if (guomanResult?.code === 200 && guomanResult.list) {
+            setGuomanData(guomanResult.list);
+            if (guomanResult.list.length > 0) {
+              setCache('homepage_guoman', guomanResult.list);
+            }
           }
 
           try {
@@ -564,6 +562,52 @@ function HomeClient() {
     localStorage.setItem('hasSeenAnnouncement', announcement); // 记录已查看弹窗
   };
 
+  // 将列表按「2 排、从左到右」的顺序切成若干列，横向滚动时两排一起移动
+  const buildTwoRowColumns = <T,>(items: T[]): T[][] => {
+    const columnCount = Math.ceil(items.length / 2);
+    const columns: T[][] = [];
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+      const column: T[] = [];
+      for (let row = 0; row < 2; row++) {
+        const item = items[row * columnCount + columnIndex];
+        if (item !== undefined) column.push(item);
+      }
+      columns.push(column);
+    }
+    return columns;
+  };
+
+  const renderTwoRowColumns = <T,>(
+    items: T[],
+    renderItem: (item: T) => ReactNode,
+    getKey: (item: T) => string,
+    wrapClassName = 'w-24 sm:w-44'
+  ) =>
+    buildTwoRowColumns(items).map((column, columnIndex) => (
+      <div
+        key={columnIndex}
+        className='flex shrink-0 flex-col gap-3 sm:gap-4'
+      >
+        {column.map((item) => (
+          <div key={getKey(item)} className={wrapClassName}>
+            {renderItem(item)}
+          </div>
+        ))}
+      </div>
+    ));
+
+  const renderTwoRowSkeletons = (count = 14) =>
+    renderTwoRowColumns(
+      Array.from({ length: count }, (_, index) => index),
+      () => (
+        <>
+          <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
+          <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
+        </>
+      ),
+      (index) => String(index)
+    );
+
   // 渲染模块的函数
   const renderModule = (moduleId: string) => {
     switch (moduleId) {
@@ -584,20 +628,10 @@ function HomeClient() {
             </div>
             <ScrollableRow>
               {loading
-                ? Array.from({ length: 8 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
-                      <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
-                      <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
-                    </div>
-                  ))
-                : hotMovies.map((movie) => (
-                    <div
-                      key={movie.id}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
+                ? renderTwoRowSkeletons()
+                : renderTwoRowColumns(
+                    hotMovies,
+                    (movie) => (
                       <VideoCard
                         id={movie.id}
                         poster={movie.poster}
@@ -608,8 +642,9 @@ function HomeClient() {
                         from='douban'
                         douban_id={movie.id ? parseInt(movie.id) : undefined}
                       />
-                    </div>
-                  ))}
+                    ),
+                    (movie) => movie.id
+                  )}
             </ScrollableRow>
           </section>
         );
@@ -632,20 +667,10 @@ function HomeClient() {
             </div>
             <ScrollableRow>
               {loading
-                ? Array.from({ length: 8 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
-                      <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
-                      <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
-                    </div>
-                  ))
-                : hotDuanju.map((duanju) => (
-                    <div
-                      key={duanju.id + duanju.source}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
+                ? renderTwoRowSkeletons()
+                : renderTwoRowColumns(
+                    hotDuanju,
+                    (duanju) => (
                       <VideoCard
                         id={duanju.id}
                         source={duanju.source}
@@ -664,13 +689,17 @@ function HomeClient() {
                           episodes_titles: duanju.episodes_titles,
                         }}
                       />
-                    </div>
-                  ))}
+                    ),
+                    (duanju) => `${duanju.id}${duanju.source}`
+                  )}
             </ScrollableRow>
           </section>
         );
 
-      case 'bangumiCalendar':
+      case 'bangumiCalendar': {
+        // 新番放送改为取「国漫」数据
+        if (!loading && guomanData.length === 0) return null;
+
         return (
           <section key='bangumiCalendar' className='mb-8'>
             <div className='mb-4 flex items-center justify-between'>
@@ -687,61 +716,16 @@ function HomeClient() {
             </div>
             <ScrollableRow>
               {loading
-                ? Array.from({ length: 8 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
-                      <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
-                        <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
-                      </div>
-                      <div className='mt-2 h-4 bg-gray-200 rounded animate-pulse dark:bg-gray-800'></div>
-                    </div>
-                  ))
-                : (() => {
-                    const today = new Date();
-                    const weekdays = [
-                      'Sun',
-                      'Mon',
-                      'Tue',
-                      'Wed',
-                      'Thu',
-                      'Fri',
-                      'Sat',
-                    ];
-                    const currentWeekday = weekdays[today.getDay()];
-                    const todayAnimes =
-                      bangumiCalendarData
-                        .find((item) => item.weekday.en === currentWeekday)
-                        ?.items.filter((anime) => anime.images) || [];
-
-                    return todayAnimes.map((anime, index) => (
-                      <div
-                        key={`${anime.id}-${index}`}
-                        className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                      >
-                        <VideoCard
-                          from='douban'
-                          title={anime.name_cn || anime.name}
-                          poster={
-                            anime.images?.large ||
-                            anime.images?.common ||
-                            anime.images?.medium ||
-                            anime.images?.small ||
-                            anime.images?.grid ||
-                            ''
-                          }
-                          douban_id={anime.id}
-                          rate={anime.rating?.score?.toFixed(1) || ''}
-                          year={anime.air_date?.split('-')?.[0] || ''}
-                          isBangumi={true}
-                        />
-                      </div>
-                    ));
-                  })()}
+                ? renderTwoRowSkeletons()
+                : renderTwoRowColumns(
+                    guomanData,
+                    (item) => <GuomanCard item={item} />,
+                    (item) => item.id
+                  )}
             </ScrollableRow>
           </section>
         );
+      }
 
       case 'hotTvShows':
         return (
@@ -760,20 +744,10 @@ function HomeClient() {
             </div>
             <ScrollableRow>
               {loading
-                ? Array.from({ length: 8 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
-                      <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
-                      <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
-                    </div>
-                  ))
-                : hotTvShows.map((tvShow) => (
-                    <div
-                      key={tvShow.id}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
+                ? renderTwoRowSkeletons()
+                : renderTwoRowColumns(
+                    hotTvShows,
+                    (tvShow) => (
                       <VideoCard
                         id={tvShow.id}
                         poster={tvShow.poster}
@@ -784,8 +758,9 @@ function HomeClient() {
                         from='douban'
                         douban_id={tvShow.id ? parseInt(tvShow.id) : undefined}
                       />
-                    </div>
-                  ))}
+                    ),
+                    (tvShow) => tvShow.id
+                  )}
             </ScrollableRow>
           </section>
         );
@@ -807,20 +782,10 @@ function HomeClient() {
             </div>
             <ScrollableRow>
               {loading
-                ? Array.from({ length: 8 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
-                      <div className='aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mb-2' />
-                      <div className='h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4' />
-                    </div>
-                  ))
-                : hotVarietyShows.map((varietyShow) => (
-                    <div
-                      key={varietyShow.id}
-                      className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                    >
+                ? renderTwoRowSkeletons()
+                : renderTwoRowColumns(
+                    hotVarietyShows,
+                    (varietyShow) => (
                       <VideoCard
                         id={varietyShow.id}
                         poster={varietyShow.poster}
@@ -833,8 +798,9 @@ function HomeClient() {
                           varietyShow.id ? parseInt(varietyShow.id) : undefined
                         }
                       />
-                    </div>
-                  ))}
+                    ),
+                    (varietyShow) => varietyShow.id
+                  )}
             </ScrollableRow>
           </section>
         );
@@ -849,11 +815,9 @@ function HomeClient() {
               </h2>
             </div>
             <ScrollableRow>
-              {upcomingContent.map((item) => (
-                <div
-                  key={`${item.media_type}-${item.id}`}
-                  className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                >
+              {renderTwoRowColumns(
+                upcomingContent,
+                (item) => (
                   <VideoCard
                     title={item.title}
                     poster={processImageUrl(getTMDBImageUrl(item.poster_path))}
@@ -869,8 +833,9 @@ function HomeClient() {
                     releaseDate={item.release_date}
                     isUpcoming={true}
                   />
-                </div>
-              ))}
+                ),
+                (item) => `${item.media_type}-${item.id}`
+              )}
             </ScrollableRow>
           </section>
         );
@@ -880,8 +845,32 @@ function HomeClient() {
     }
   };
 
+  // 顶部工具条按钮：放在主题切换（调色）按钮左侧，样式与其它顶部按钮一致
+  const headerActions = (
+    <>
+      <button
+        onClick={handleDirectPlay}
+        className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'
+        title='直链播放'
+        aria-label='直链播放'
+      >
+        <LinkIcon className='w-full h-full' />
+      </button>
+      {sourceSearchEnabled && (
+        <Link
+          href='/source-search'
+          className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'
+          title='源站寻片'
+          aria-label='源站寻片'
+        >
+          <ListVideo className='w-full h-full' />
+        </Link>
+      )}
+    </>
+  );
+
   return (
-    <PageLayout>
+    <PageLayout headerActions={headerActions}>
       <FireworksCanvas />
       {/* TMDB 热门轮播图 */}
       {homeBannerEnabled && (
@@ -894,20 +883,13 @@ function HomeClient() {
         <div className='max-w-[95%] mx-auto'>
           {/* 首页内容 */}
           <>
-            {/* 源站寻片和AI问片入口 */}
+            {/* 音乐/漫画/电子书/AI问片入口（直链播放与源站寻片已移到顶部工具条） */}
+            {musicEnabled || mangaEnabled || booksEnabled || aiEnabled ? (
             <div
               className={`flex items-center justify-end gap-2 mb-4 ${
                 homeBannerEnabled ? '' : 'mt-[30px]'
               }`}
             >
-              <button
-                onClick={handleDirectPlay}
-                className='p-1.5 rounded-lg text-blue-500 hover:text-blue-600 transition-colors'
-                title='直链播放'
-              >
-                <LinkIcon size={18} />
-              </button>
-
               {musicEnabled && (
                 <Link href='/music' prefetch={false}>
                   <button
@@ -964,6 +946,7 @@ function HomeClient() {
                 </button>
               )}
             </div>
+            ) : null}
 
             {/* 继续观看 */}
             {homeContinueWatchingEnabled && <ContinueWatching />}

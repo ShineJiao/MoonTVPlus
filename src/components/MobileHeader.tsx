@@ -10,9 +10,13 @@ import { UserMenu } from './UserMenu';
 
 interface MobileHeaderProps {
   showBackButton?: boolean;
+  headerActions?: React.ReactNode;
 }
 
-const MobileHeader = ({ showBackButton = false }: MobileHeaderProps) => {
+const MobileHeader = ({
+  showBackButton = false,
+  headerActions,
+}: MobileHeaderProps) => {
   const { siteName } = useSite();
   return (
     <header
@@ -42,6 +46,7 @@ const MobileHeader = ({ showBackButton = false }: MobileHeaderProps) => {
             </svg>
           </Link>
           {showBackButton && <BackButton />}
+          {headerActions}
         </div>
 
         {/* 右侧按钮 */}

@@ -36,6 +36,7 @@ import {
   Cloud,
   Copy,
   Database,
+  Download,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -7094,6 +7095,12 @@ const VideoSourceConfig = ({
 
   // 有效性检测相关状态
   const [showValidationModal, setShowValidationModal] = useState(false);
+  // 删除重复源：弹窗与每个重复分组中保留的源
+  const [showDuplicateSourceModal, setShowDuplicateSourceModal] =
+    useState(false);
+  const [duplicateKeepMap, setDuplicateKeepMap] = useState<
+    Record<string, string>
+  >({});
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [showSpecialSourcesModal, setShowSpecialSourcesModal] = useState(false);
   const [showClientAdSourcesModal, setShowClientAdSourcesModal] = useState(false);
@@ -7119,11 +7126,6 @@ const VideoSourceConfig = ({
     () => sources.filter((s) => s.disabled).map((s) => s.key),
     [sources]
   );
-  const invalidSourceKeys = useMemo(
-    () =>
-      validationResults.filter((r) => r.status === 'invalid').map((r) => r.key),
-    [validationResults]
-  );
   const noResultSourceKeys = useMemo(
     () =>
       validationResults
@@ -7131,6 +7133,21 @@ const VideoSourceConfig = ({
         .map((r) => r.key),
     [validationResults]
   );
+
+  // API 地址相同的视频源（忽略首尾空格与末尾斜杠），按地址分组
+  const duplicateSourceGroups = useMemo(() => {
+    const groups = new Map<string, DataSource[]>();
+    sources.forEach((source) => {
+      const api = (source.api || '').trim().replace(/\/+$/, '');
+      if (!api) return;
+      const list = groups.get(api) || [];
+      list.push(source);
+      groups.set(api, list);
+    });
+    return Array.from(groups.entries())
+      .filter(([, list]) => list.length > 1)
+      .map(([api, list]) => ({ api, sources: list }));
+  }, [sources]);
 
   // dnd-kit 传感器
   const sensors = useSensors(
@@ -8182,6 +8199,120 @@ const VideoSourceConfig = ({
     });
   };
 
+  // 导出视频源为 JSON 文件
+  const handleExportSources = () => {
+    const exportData = sources.map((source) => ({
+      key: source.key,
+      name: source.name,
+      api: source.api,
+      detail: source.detail || '',
+      disabled: !!source.disabled,
+    }));
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `video-sources-${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showAlert({
+      type: 'success',
+      title: '导出成功',
+      message: `已导出 ${exportData.length} 个视频源`,
+      timer: 2000,
+    });
+  };
+
+  // 打开「删除重复源」弹窗：默认每组优先保留配置文件中的源
+  const openDuplicateSourceModal = () => {
+    if (duplicateSourceGroups.length === 0) {
+      showAlert({
+        type: 'warning',
+        title: '没有重复源',
+        message: '当前没有 API 地址相同的视频源',
+      });
+      return;
+    }
+    const keepMap: Record<string, string> = {};
+    duplicateSourceGroups.forEach((group) => {
+      const preferred =
+        group.sources.find((source) => source.from === 'config') ||
+        group.sources[0];
+      keepMap[group.api] = preferred.key;
+    });
+    setDuplicateKeepMap(keepMap);
+    setShowDuplicateSourceModal(true);
+  };
+
+  // 合并重复源：每组保留选中的源，删除其余源
+  const handleMergeDuplicateSources = () => {
+    const keysToDelete: string[] = [];
+    duplicateSourceGroups.forEach((group) => {
+      const keepKey = duplicateKeepMap[group.api] || group.sources[0]?.key;
+      group.sources.forEach((source) => {
+        if (source.key !== keepKey) keysToDelete.push(source.key);
+      });
+    });
+
+    if (keysToDelete.length === 0) {
+      showAlert({
+        type: 'warning',
+        title: '没有需要删除的源',
+        message: '每个重复分组至少需要保留一个源',
+      });
+      return;
+    }
+
+    const closeConfirm = () =>
+      setConfirmModal({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {},
+        onCancel: () => {},
+      });
+
+    setConfirmModal({
+      isOpen: true,
+      title: '确认删除重复源',
+      message: `将保留每组的所选源，删除其余 ${keysToDelete.length} 个重复源。配置文件中的源无法删除，会自动跳过。`,
+      onConfirm: async () => {
+        try {
+          const result = await withLoading('batchSource_batch_delete', () =>
+            callSourceApi({ action: 'batch_delete', keys: keysToDelete })
+          );
+          const deleted = result?.deleted ?? keysToDelete.length;
+          const skipped = result?.skipped ?? 0;
+          showAlert({
+            type: skipped > 0 ? 'warning' : 'success',
+            title: '删除重复源完成',
+            message:
+              skipped > 0
+                ? `已删除 ${deleted} 个重复源，跳过 ${skipped} 个配置文件中的源`
+                : `已删除 ${deleted} 个重复源`,
+            timer: 3000,
+          });
+          setShowDuplicateSourceModal(false);
+          setSelectedSources(new Set());
+        } catch (err) {
+          showAlert({
+            type: 'error',
+            title: '删除重复源失败',
+            message: err instanceof Error ? err.message : '操作失败',
+          });
+        }
+        closeConfirm();
+      },
+      onCancel: closeConfirm,
+    });
+  };
+
   if (!config) {
     return (
       <div className='text-center text-gray-500 dark:text-gray-400'>
@@ -8309,6 +8440,14 @@ const VideoSourceConfig = ({
                   )}
                 </button>
                 <button
+                  onClick={handleExportSources}
+                  className={`${buttonStyles.secondary} flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  title='将全部视频源导出为 JSON 文件'
+                >
+                  <Download size={14} />
+                  <span>视频源导出</span>
+                </button>
+                <button
                   onClick={() =>
                     handleQuickBatch(
                       'batch_enable',
@@ -8337,28 +8476,19 @@ const VideoSourceConfig = ({
                   )}
                 </button>
                 <button
-                  onClick={() =>
-                    handleQuickBatch(
-                      'batch_disable',
-                      invalidSourceKeys,
-                      '禁用无效源',
-                      '当前没有检测为无效的视频源，请先执行「有效性检测」'
-                    )
-                  }
-                  disabled={
-                    isValidating || isLoading('batchSource_batch_disable')
-                  }
+                  onClick={openDuplicateSourceModal}
+                  disabled={isLoading('batchSource_batch_delete')}
                   className={`${
-                    isValidating || isLoading('batchSource_batch_disable')
+                    isLoading('batchSource_batch_delete')
                       ? buttonStyles.disabled
                       : buttonStyles.danger
                   } flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  title='禁用有效性检测中连接失败（无效）的视频源'
+                  title='自动合并 API 地址相同的视频源，删除前可先选择保留哪一个'
                 >
-                  <span>禁用无效源</span>
-                  {invalidSourceKeys.length > 0 && (
+                  <span>删除重复源</span>
+                  {duplicateSourceGroups.length > 0 && (
                     <span className='rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold'>
-                      {invalidSourceKeys.length}
+                      {duplicateSourceGroups.length}
                     </span>
                   )}
                 </button>
@@ -9042,6 +9172,120 @@ const VideoSourceConfig = ({
                     }`}
                   >
                     开始检测
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* 删除重复源弹窗 */}
+      {showDuplicateSourceModal &&
+        createPortal(
+          <div
+            className='fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm'
+            onClick={() => setShowDuplicateSourceModal(false)}
+          >
+            <div
+              className='flex max-h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800'
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className='flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-gray-700'>
+                <div>
+                  <h3 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>
+                    删除重复源
+                  </h3>
+                  <p className='mt-1 text-sm text-gray-600 dark:text-gray-400'>
+                    以下视频源的 API 地址相同。请为每组选择要保留的源，确认后将删除该组中其余的源。
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowDuplicateSourceModal(false)}
+                  className='text-2xl leading-none text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300'
+                  aria-label='关闭删除重复源弹窗'
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className='min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5'>
+                {duplicateSourceGroups.map((group, groupIndex) => (
+                  <div
+                    key={group.api}
+                    className='rounded-xl border border-gray-200 p-4 dark:border-gray-700'
+                  >
+                    <div className='mb-3 break-all font-mono text-xs text-gray-500 dark:text-gray-400'>
+                      {group.api}
+                    </div>
+                    <div className='space-y-2'>
+                      {group.sources.map((source) => (
+                        <label
+                          key={source.key}
+                          className='flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900/50'
+                        >
+                          <input
+                            type='radio'
+                            name={`duplicate-source-group-${groupIndex}`}
+                            checked={
+                              (duplicateKeepMap[group.api] ||
+                                group.sources[0]?.key) === source.key
+                            }
+                            onChange={() =>
+                              setDuplicateKeepMap((prev) => ({
+                                ...prev,
+                                [group.api]: source.key,
+                              }))
+                            }
+                            className='border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700'
+                          />
+                          <div className='min-w-0 flex-1'>
+                            <div className='truncate text-sm font-medium text-gray-900 dark:text-gray-100'>
+                              {source.name}
+                            </div>
+                            <div className='truncate text-xs text-gray-500 dark:text-gray-400'>
+                              {source.key}
+                              {source.from === 'config' && (
+                                <span className='ml-2 text-amber-600 dark:text-amber-400'>
+                                  配置文件源（不可删除）
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className='flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-gray-700 dark:bg-gray-900/30'>
+                <span className='text-sm text-gray-600 dark:text-gray-400'>
+                  共{' '}
+                  <span className='font-medium text-red-600 dark:text-red-400'>
+                    {duplicateSourceGroups.length}
+                  </span>{' '}
+                  组重复源
+                </span>
+                <div className='flex items-center gap-3'>
+                  <button
+                    onClick={() => setShowDuplicateSourceModal(false)}
+                    className={buttonStyles.secondary}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleMergeDuplicateSources}
+                    disabled={isLoading('batchSource_batch_delete')}
+                    className={`px-4 py-2 ${
+                      isLoading('batchSource_batch_delete')
+                        ? buttonStyles.disabled
+                        : buttonStyles.danger
+                    }`}
+                  >
+                    {isLoading('batchSource_batch_delete')
+                      ? '删除中...'
+                      : '确认删除'}
                   </button>
                 </div>
               </div>
