@@ -27,7 +27,6 @@ import {
   TVBoxBridgeSiteInfo,
   TVBoxBridgeStatusInfo,
 } from '@/lib/tvbox-bridge.shared';
-import type { TVBoxLiveIngestPreview } from '@/lib/tvbox-live-ingest.shared';
 
 import Toast, { ToastProps } from './Toast';
 import TVBoxBridgeDeployDialog from './TVBoxBridgeDeployDialog';
@@ -102,6 +101,268 @@ const SectionTitle = ({
   </div>
 );
 
+type SubscribeIngestKind = 'video' | 'live';
+
+interface IngestPanelItem {
+  key: string;
+  name: string;
+  detail: string;
+}
+
+interface IngestPanelPreview {
+  configUrl: string;
+  total: number;
+  usable: number;
+  duplicates: number;
+  skipped: number;
+  repos: number;
+  items: IngestPanelItem[];
+}
+
+/** 订阅解析 → 批量选择 → 导入为视频源 / 电视源，两个入口共用一套交互。 */
+const SubscribeImportPanel = ({
+  kind,
+  notify,
+  onImported,
+}: {
+  kind: SubscribeIngestKind;
+  notify: (message: string, type?: ToastProps['type']) => void;
+  onImported: () => Promise<void>;
+}) => {
+  const isLive = kind === 'live';
+  const endpoint = isLive
+    ? '/api/admin/tvbox-live-ingest'
+    : '/api/admin/tvbox-ingest';
+  const label = isLive ? '电视源' : '视频源';
+
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<IngestPanelPreview | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+
+  const parse = async () => {
+    const target = url.trim();
+    if (!target) {
+      notify('请填写 TVBox 订阅地址', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${endpoint}?url=${encodeURIComponent(target)}`
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '订阅解析失败');
+
+      const rawItems: any[] = Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(data.sites)
+          ? data.sites
+          : [];
+      const mapped: IngestPanelPreview = {
+        configUrl: data.configUrl || target,
+        total: isLive ? data.totalLives || 0 : data.totalSites || 0,
+        usable: isLive ? data.usableLives || 0 : data.usableSites || 0,
+        duplicates: data.duplicates || 0,
+        skipped: isLive ? data.skippedLocal || 0 : 0,
+        repos: data.repos || 0,
+        items: rawItems.map((item) => ({
+          key: String(item.key),
+          name: String(item.name || item.key),
+          detail: String(item.url || item.api || ''),
+        })),
+      };
+      setPreview(mapped);
+      setSelected(new Set(mapped.items.map((item) => item.key)));
+      notify(`解析完成：${mapped.usable} 个可用${label}`, 'success');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '订阅解析失败', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const importSelected = async () => {
+    if (!preview) return;
+    if (selected.size === 0) {
+      notify(`请至少选择一个${label}`, 'error');
+      return;
+    }
+    setImporting(true);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: preview.configUrl,
+          keys: Array.from(selected),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '导入失败');
+      notify(
+        `已导入 ${data.added} 个${label}${
+          data.skipped ? `，跳过 ${data.skipped} 个重复项` : ''
+        }`,
+        'success'
+      );
+      setPreview(null);
+      setUrl('');
+      setSelected(new Set());
+      await onImported();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '导入失败', 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className='space-y-4 rounded-lg border border-emerald-200 p-4 dark:border-emerald-800'>
+      <SectionTitle
+        icon={<Download size={18} />}
+        title={`导入 TVBox ${label}`}
+        desc={
+          isLive
+            ? '解析订阅里的 lives 直播列表并加入电视源，无需部署桥接；导入后与手动添加的直播源统一管理、统一刷新。'
+            : '解析订阅里的 CMS 站点并加入视频源，无需部署桥接；导入后与普通视频源统一管理、统一搜索。'
+        }
+      />
+      <div className='flex flex-col gap-3 sm:flex-row'>
+        <input
+          type='text'
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setPreview(null);
+            setSelected(new Set());
+          }}
+          disabled={loading || importing}
+          placeholder='粘贴 TVBox 订阅 / 配置地址（json）'
+          className={inputClass}
+        />
+        <button
+          onClick={parse}
+          disabled={loading || importing}
+          className={`${buttonStyles.primary} flex-shrink-0`}
+        >
+          {loading ? (
+            <Loader2 size={16} className='animate-spin' />
+          ) : (
+            <RefreshCw size={16} />
+          )}
+          解析订阅
+        </button>
+      </div>
+
+      {preview && (
+        <div className='space-y-3'>
+          <div className='flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400'>
+            <span>
+              {isLive ? (
+                <>
+                  共 {preview.total} 个直播源，可用 {preview.usable} 个
+                  {preview.duplicates > 0
+                    ? `（去重 ${preview.duplicates}）`
+                    : ''}
+                  {preview.skipped > 0
+                    ? `，跳过 ${preview.skipped} 个本机代理/内嵌源`
+                    : ''}
+                </>
+              ) : (
+                <>
+                  共 {preview.total} 个站点，可用 CMS 源 {preview.usable} 个
+                  {preview.duplicates > 0
+                    ? `（去重 ${preview.duplicates}）`
+                    : ''}
+                </>
+              )}
+              {preview.repos > 0 ? `，展开仓库 ${preview.repos} 个` : ''}
+            </span>
+            <div className='flex items-center gap-2'>
+              <button
+                type='button'
+                className='text-blue-600 hover:underline dark:text-blue-400'
+                onClick={() =>
+                  setSelected(new Set(preview.items.map((item) => item.key)))
+                }
+              >
+                全选
+              </button>
+              <button
+                type='button'
+                className='text-gray-500 hover:underline dark:text-gray-400'
+                onClick={() => setSelected(new Set())}
+              >
+                清空
+              </button>
+            </div>
+          </div>
+
+          {preview.items.length === 0 ? (
+            <p className='text-sm text-amber-600 dark:text-amber-400'>
+              {isLive
+                ? '该订阅里没有可直接使用的直播源（可能全部依赖 TVBox 本机代理或内嵌频道）。'
+                : '该订阅里没有可直接使用的 CMS 站点（可能全是 spider 源）。'}
+            </p>
+          ) : (
+            <>
+              <div className='max-h-72 space-y-1.5 overflow-auto rounded-lg border border-gray-200 p-2 dark:border-gray-700'>
+                {preview.items.map((item) => (
+                  <label
+                    key={item.key}
+                    className='flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  >
+                    <input
+                      type='checkbox'
+                      checked={selected.has(item.key)}
+                      onChange={(e) => {
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(item.key);
+                          else next.delete(item.key);
+                          return next;
+                        });
+                      }}
+                      className='mt-0.5'
+                    />
+                    <span className='min-w-0'>
+                      <span className='block truncate text-sm text-gray-900 dark:text-gray-100'>
+                        {item.name}
+                      </span>
+                      <span className='block truncate text-[11px] text-gray-400'>
+                        {item.detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className='flex items-center justify-between gap-3'>
+                <span className='text-xs text-gray-500 dark:text-gray-400'>
+                  已选 {selected.size} 个
+                </span>
+                <button
+                  onClick={importSelected}
+                  disabled={importing || selected.size === 0}
+                  className={buttonStyles.success}
+                >
+                  {importing ? (
+                    <Loader2 size={16} className='animate-spin' />
+                  ) : (
+                    <Save size={16} />
+                  )}
+                  导入为{label}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Badge = ({
   children,
   tone = 'gray',
@@ -155,13 +416,6 @@ export default function TVBoxBridgeAdminComponent({
   const [depot, setDepot] = useState<TVBoxBridgeDepotInfo | null>(null);
   const [selectedDepotUrl, setSelectedDepotUrl] = useState('');
   const [pickingDepotUrl, setPickingDepotUrl] = useState<string | null>(null);
-
-  // 直接导入 TVBox 电视源
-  const [ingestUrl, setIngestUrl] = useState('');
-  const [ingestLoading, setIngestLoading] = useState(false);
-  const [ingestData, setIngestData] = useState<TVBoxLiveIngestPreview | null>(null);
-  const [ingestSelected, setIngestSelected] = useState<Set<string>>(new Set());
-  const [ingestImporting, setIngestImporting] = useState(false);
 
   const [loadingSiteKey, setLoadingSiteKey] = useState<string | null>(null);
 
@@ -318,66 +572,6 @@ export default function TVBoxBridgeAdminComponent({
       notify(error instanceof Error ? error.message : '加载配置失败', 'error');
     } finally {
       setLoadingConfig(false);
-    }
-  };
-
-  // ---------- 直接导入电视源 ----------
-  const parseIngest = async () => {
-    const url = ingestUrl.trim();
-    if (!url) {
-      notify('请填写 TVBox 订阅地址', 'error');
-      return;
-    }
-    setIngestLoading(true);
-    try {
-      const response = await fetch(
-        `/api/admin/tvbox-live-ingest?url=${encodeURIComponent(url)}`
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || '订阅解析失败');
-      const preview = data as TVBoxLiveIngestPreview;
-      setIngestData(preview);
-      setIngestSelected(new Set(preview.items.map((item) => item.key)));
-      notify(`解析完成：${preview.usableLives} 个可用电视源`, 'success');
-    } catch (error) {
-      notify(error instanceof Error ? error.message : '订阅解析失败', 'error');
-    } finally {
-      setIngestLoading(false);
-    }
-  };
-
-  const importIngest = async () => {
-    if (!ingestData) return;
-    if (ingestSelected.size === 0) {
-      notify('请至少选择一个电视源', 'error');
-      return;
-    }
-    setIngestImporting(true);
-    try {
-      const response = await fetch('/api/admin/tvbox-live-ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: ingestData.configUrl,
-          keys: Array.from(ingestSelected),
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || '导入失败');
-      notify(
-        `已导入 ${data.added} 个电视源${
-          data.skipped ? `，跳过 ${data.skipped} 个重复项` : ''
-        }`,
-        'success'
-      );
-      setIngestData(null);
-      setIngestUrl('');
-      setIngestSelected(new Set());
-      await refreshConfig();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : '导入失败', 'error');
-    } finally {
-      setIngestImporting(false);
     }
   };
 
@@ -602,134 +796,19 @@ export default function TVBoxBridgeAdminComponent({
         </button>
       </div>
 
-      {/* 直接导入电视源 */}
-      <div className='space-y-4 rounded-lg border border-emerald-200 p-4 dark:border-emerald-800'>
-        <SectionTitle
-          icon={<Download size={18} />}
-          title='直接导入 TVBox 电视源'
-          desc='解析订阅里的 lives 直播列表并加入电视源，无需部署桥接；导入后与手动添加的直播源统一管理、统一刷新。'
-        />
-        <div className='flex flex-col gap-3 sm:flex-row'>
-          <input
-            type='text'
-            value={ingestUrl}
-            onChange={(e) => {
-              setIngestUrl(e.target.value);
-              setIngestData(null);
-              setIngestSelected(new Set());
-            }}
-            disabled={ingestLoading || ingestImporting}
-            placeholder='粘贴 TVBox 订阅 / 配置地址（json）'
-            className={inputClass}
-          />
-          <button
-            onClick={parseIngest}
-            disabled={ingestLoading || ingestImporting}
-            className={`${buttonStyles.primary} flex-shrink-0`}
-          >
-            {ingestLoading ? (
-              <Loader2 size={16} className='animate-spin' />
-            ) : (
-              <RefreshCw size={16} />
-            )}
-            解析订阅
-          </button>
-        </div>
+      {/* 导入视频源（上方） */}
+      <SubscribeImportPanel
+        kind='video'
+        notify={notify}
+        onImported={refreshConfig}
+      />
 
-        {ingestData && (
-          <div className='space-y-3'>
-            <div className='flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400'>
-              <span>
-                共 {ingestData.totalLives} 个直播源，可用 {ingestData.usableLives}{' '}
-                个
-                {ingestData.duplicates > 0
-                  ? `（去重 ${ingestData.duplicates}）`
-                  : ''}
-                {ingestData.skippedLocal > 0
-                  ? `，跳过 ${ingestData.skippedLocal} 个本机代理/内嵌源`
-                  : ''}
-                {ingestData.repos > 0 ? `，展开仓库 ${ingestData.repos} 个` : ''}
-              </span>
-              <div className='flex items-center gap-2'>
-                <button
-                  type='button'
-                  className='text-blue-600 hover:underline dark:text-blue-400'
-                  onClick={() =>
-                    setIngestSelected(
-                      new Set(ingestData.items.map((item) => item.key))
-                    )
-                  }
-                >
-                  全选
-                </button>
-                <button
-                  type='button'
-                  className='text-gray-500 hover:underline dark:text-gray-400'
-                  onClick={() => setIngestSelected(new Set())}
-                >
-                  清空
-                </button>
-              </div>
-            </div>
-
-            {ingestData.items.length === 0 ? (
-              <p className='text-sm text-amber-600 dark:text-amber-400'>
-                该订阅里没有可直接使用的直播源（可能全部依赖 TVBox 本机代理或内嵌频道）。
-              </p>
-            ) : (
-              <>
-                <div className='max-h-72 space-y-1.5 overflow-auto rounded-lg border border-gray-200 p-2 dark:border-gray-700'>
-                  {ingestData.items.map((item) => (
-                    <label
-                      key={item.key}
-                      className='flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    >
-                      <input
-                        type='checkbox'
-                        checked={ingestSelected.has(item.key)}
-                        onChange={(e) => {
-                          setIngestSelected((prev) => {
-                            const next = new Set(prev);
-                            if (e.target.checked) next.add(item.key);
-                            else next.delete(item.key);
-                            return next;
-                          });
-                        }}
-                        className='mt-0.5'
-                      />
-                      <span className='min-w-0'>
-                        <span className='block truncate text-sm text-gray-900 dark:text-gray-100'>
-                          {item.name}
-                        </span>
-                        <span className='block truncate text-[11px] text-gray-400'>
-                          {item.url}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <div className='flex items-center justify-between gap-3'>
-                  <span className='text-xs text-gray-500 dark:text-gray-400'>
-                    已选 {ingestSelected.size} 个
-                  </span>
-                  <button
-                    onClick={importIngest}
-                    disabled={ingestImporting || ingestSelected.size === 0}
-                    className={buttonStyles.success}
-                  >
-                    {ingestImporting ? (
-                      <Loader2 size={16} className='animate-spin' />
-                    ) : (
-                      <Save size={16} />
-                    )}
-                    导入为电视源
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      {/* 导入电视源（下方） */}
+      <SubscribeImportPanel
+        kind='live'
+        notify={notify}
+        onImported={refreshConfig}
+      />
 
       <div className='space-y-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700'>
         <div className='flex items-center justify-between'>

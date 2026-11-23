@@ -126,6 +126,11 @@ export interface AdminConfig {
     disabled?: boolean;
     proxyMode?: boolean; // 代理模式开关：启用后由服务器代理m3u8和ts分片
     weight?: number; // 权重：用于排序和优选评分，默认0，范围0-100
+    tvbox?: {
+      configUrl: string;
+      siteKey?: string;
+      sourceUrl?: string;
+    }; // 由 TVBox 订阅直接导入时记录来源
   }[];
   CustomCategories: {
     name?: string;
