@@ -250,10 +250,9 @@ export default async function RootLayout({
     // 音乐功能配置
     musicFeatureEnabled = config.MusicConfig?.Enabled || false;
     musicProxyEnabled = config.MusicConfig?.ProxyEnabled ?? true;
-    // 漫画功能配置
-    suwayomiEnabled = !!(
-      config.SuwayomiConfig?.Enabled && config.SuwayomiConfig?.ServerURL
-    );
+    // 漫画功能配置：入口由「启用漫画展馆」开关控制，
+    // 服务地址缺失时仍显示入口，由漫画页自行提示服务未配置。
+    suwayomiEnabled = !!config.SuwayomiConfig?.Enabled;
     // 电子书功能配置
     const opdsConfig = config.OPDSConfig;
     // 电子书馆同时支持 OPDS 与 Legado。Legado 源通过订阅单独配置，
