@@ -2523,6 +2523,8 @@ function PlayPageClient() {
   const artRef = useRef<HTMLDivElement | null>(null);
   // 换集重建播放器前记住网页全屏状态，新播放器 ready 后恢复
   const restoreWebFullscreenOnReadyRef = useRef(false);
+  // 首次自动全屏申请原生全屏失败时，等播放器 ready 后回退网页全屏
+  const autoFullscreenFallbackPendingRef = useRef(false);
 
   // iOS PWA 自绘全屏：见 globals.css 的 .ios-pwa-immersive。
   // 容器（artRef 的父级）是 JSX 里的固定节点，跨换集重建不换，所以类名能留着不丢全屏。
@@ -8937,6 +8939,10 @@ function PlayPageClient() {
                     .art-video-player:not(.art-fullscreen):not(.art-fullscreen-web) .episode-select-control-wrapper {
                       display: none !important;
                     }
+                    /* 自动原生全屏时 Artplayer 的事件可能尚未接管，用 :fullscreen 兜底显示 */
+                    .art-video-player:fullscreen .episode-select-control-wrapper {
+                      display: flex !important;
+                    }
                   `;
                   document.head.appendChild(style);
                 }
@@ -8961,6 +8967,46 @@ function PlayPageClient() {
           ],
         });
 
+        // 首次进入播放页：播放器 DOM 刚创建就申请原生全屏（等同右下角「全屏」）。
+        // canplay 往往超过浏览器 5 秒手势有效期，等到 ready 再申请会退化为网页全屏。
+        if (!autoFullscreenAppliedRef.current) {
+          autoFullscreenAppliedRef.current = true;
+          autoFullscreenFallbackPendingRef.current = true;
+          const playerEl =
+            artRef.current?.querySelector<HTMLElement>('.art-video-player');
+          const requestFullscreen =
+            playerEl?.requestFullscreen?.bind(playerEl) ||
+            (playerEl as any)?.webkitRequestFullscreen?.bind(playerEl);
+          if (
+            requestFullscreen &&
+            typeof document !== 'undefined' &&
+            !!document.fullscreenEnabled &&
+            !isIOS
+          ) {
+            try {
+              const result = requestFullscreen();
+              if (result && typeof result.catch === 'function') {
+                result.catch((err: unknown) => {
+                  console.warn('自动原生全屏被拦截，稍后回退网页全屏:', err);
+                });
+              }
+            } catch (err) {
+              console.warn('自动原生全屏失败:', err);
+            }
+          }
+        }
+
+        // 原生全屏在 loadedmetadata 前生效时 Artplayer 还没接管全屏事件，
+        // 这里补一次状态同步，保证按钮图标与 art-fullscreen 样式正确
+        artPlayerRef.current.once('video:loadedmetadata', () => {
+          const playerEl =
+            artRef.current?.querySelector<HTMLElement>('.art-video-player');
+          if (!playerEl || typeof document === 'undefined') return;
+          if (document.fullscreenElement !== playerEl) return;
+          playerEl.classList.add('art-fullscreen');
+          artPlayerRef.current?.emit('fullscreen', true);
+        });
+
         artPlayerRef.current.on('destroy', () => {
           clearPlayerTimeouts();
         });
@@ -8981,46 +9027,21 @@ function PlayPageClient() {
             }
           }
 
-          // 首次进入播放页自动全屏：优先原生全屏（等同右下角「全屏」），
-          // 浏览器因缺少用户手势拒绝时回退网页全屏，保证仍有全屏体验
-          if (!autoFullscreenAppliedRef.current && artPlayerRef.current) {
-            autoFullscreenAppliedRef.current = true;
+          // 自动全屏兜底：构造时申请的原生全屏若被浏览器拦截（无手势/不支持），
+          // ready 后回退网页全屏，保证首次进入仍有全屏体验
+          if (autoFullscreenFallbackPendingRef.current) {
+            autoFullscreenFallbackPendingRef.current = false;
             schedulePlayerTimeout(() => {
               if (!artPlayerRef.current) return;
-              const supportsNativeFullscreen =
-                typeof document !== 'undefined' && !!document.fullscreenEnabled;
-              if (supportsNativeFullscreen) {
-                // 直接对播放器元素申请全屏，并捕获被浏览器拦截（缺少手势）的 Promise
-                const playerEl =
-                  artRef.current?.querySelector<HTMLElement>('.art-video-player');
-                const requestFullscreen =
-                  playerEl?.requestFullscreen?.bind(playerEl) ||
-                  (playerEl as any)?.webkitRequestFullscreen?.bind(playerEl);
-                if (requestFullscreen) {
-                  try {
-                    const result = requestFullscreen();
-                    if (result && typeof result.catch === 'function') {
-                      result.catch((err: unknown) => {
-                        console.warn('自动原生全屏被拦截，回退网页全屏:', err);
-                      });
-                    }
-                  } catch (err) {
-                    console.warn('自动原生全屏失败:', err);
-                  }
-                }
+              if (typeof document !== 'undefined' && document.fullscreenElement)
+                return;
+              if (artPlayerRef.current.fullscreenWeb) return;
+              try {
+                artPlayerRef.current.fullscreenWeb = true;
+              } catch (err) {
+                console.warn('自动全屏失败:', err);
               }
-              // 原生全屏未生效（被手势限制拦截）时回退网页全屏
-              schedulePlayerTimeout(() => {
-                if (!artPlayerRef.current) return;
-                if (typeof document !== 'undefined' && document.fullscreenElement)
-                  return;
-                try {
-                  artPlayerRef.current.fullscreenWeb = true;
-                } catch (err) {
-                  console.warn('自动全屏失败:', err);
-                }
-              }, supportsNativeFullscreen ? 600 : 120);
-            }, 120);
+            }, 200);
           }
 
           rescueWebkitHlsBootstrap('player-ready');
